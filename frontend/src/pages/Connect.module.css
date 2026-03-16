@@ -1,0 +1,110 @@
+﻿.page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: radial-gradient(ellipse at 50% 0%, rgba(75, 123, 255, 0.16) 0%, transparent 60%), var(--bg);
+}
+
+.inner {
+  text-align: center;
+  width: 100%;
+  max-width: 360px;
+}
+
+.logo {
+  font-size: 56px;
+  margin-bottom: 12px;
+  animation: fadeUp 0.5s ease both;
+}
+
+.title {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #4b7bff, #6f63ff);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  margin-bottom: 8px;
+  animation: fadeUp 0.5s 0.1s ease both;
+}
+
+.sub {
+  color: var(--text2);
+  font-size: 14px;
+  margin-bottom: 32px;
+  line-height: 1.5;
+  animation: fadeUp 0.5s 0.15s ease both;
+}
+
+.features {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 32px;
+  animation: fadeUp 0.5s 0.2s ease both;
+}
+
+.feature {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 12px 16px;
+  font-size: 14px;
+  text-align: left;
+  color: var(--text2);
+  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+}
+
+.connectBtn {
+  width: 100%;
+  padding: 16px;
+  background: #1877f2;
+  border-radius: var(--radius);
+  color: white;
+  font-size: 16px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 24px rgba(24,119,242,0.3);
+  animation: fadeUp 0.5s 0.25s ease both;
+  transition: transform 0.15s;
+}
+
+.connectBtn span {
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.connectBtn:active {
+  transform: scale(0.97);
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text3);
+  animation: fadeUp 0.5s 0.3s ease both;
+}
+
+.legalLinks {
+  margin-top: 18px;
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  animation: fadeUp 0.5s 0.35s ease both;
+}
+
+.legalLinks a {
+  color: var(--accent2);
+  font-size: 12px;
+  text-decoration: none;
+}
+
+.legalLinks a:hover {
+  text-decoration: underline;
+}

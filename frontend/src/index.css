@@ -1,0 +1,88 @@
+﻿* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f2f5fb;
+  --bg2: #ffffff;
+  --bg3: #eef2f9;
+  --card: #ffffff;
+  --border: rgba(15, 23, 42, 0.08);
+  --accent: #4b7bff;
+  --accent2: #6f63ff;
+  --accent-glow: rgba(75, 123, 255, 0.22);
+  --green: #16a34a;
+  --red: #ef4444;
+  --text: #101828;
+  --text2: #4a5874;
+  --text3: #8a95a8;
+  --font-display: 'Unbounded', sans-serif;
+  --font-body: 'Golos Text', sans-serif;
+  --radius: 16px;
+  --radius-sm: 10px;
+}
+
+html, body, #root {
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Telegram theme override */
+body {
+  background-color: var(--tg-theme-bg-color, var(--bg));
+  background-image:
+    radial-gradient(circle at top, rgba(75, 123, 255, 0.12), transparent 35%),
+    linear-gradient(180deg, #f8faff 0%, var(--bg) 60%, #e9eef7 100%);
+  background-attachment: fixed;
+}
+
+::-webkit-scrollbar { width: 0; }
+
+button {
+  font-family: var(--font-body);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+
+input, select, textarea {
+  font-family: var(--font-body);
+  outline: none;
+}
+
+/* Animations */
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(16px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.5; }
+}
+
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.fade-up { animation: fadeUp 0.4s ease forwards; }
+.fade-up-2 { animation: fadeUp 0.4s 0.1s ease both; }
+.fade-up-3 { animation: fadeUp 0.4s 0.2s ease both; }
+.fade-up-4 { animation: fadeUp 0.4s 0.3s ease both; }
+
+.skeleton {
+  background: linear-gradient(90deg, var(--bg3) 25%, var(--bg2) 50%, var(--bg3) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  border-radius: 8px;
+}
