@@ -50,43 +50,29 @@ export default async function handler(req, res) {
     const { description, geo } = req.body || {}
 
     if (!description) return res.status(400).json({ error: 'No description' })
-    if (!process.env.ANTHROPIC_API_KEY) {
-      return res.status(500).json({ error: 'ANTHROPIC_API_KEY is missing in Vercel' })
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(500).json({ error: 'OPENAI_API_KEY is missing in Vercel' })
     }
 
-    const prompt = `Ты senior performance-маркетолог по Facebook Ads.
+    const prompt = `Ты senior performance-маркетолог по Facebook Ads.\n\nСгенерируй 1 сильный рекламный вариант для объявления.\n\nДанные:\n- Продукт или услуга: ${description}\n- Гео: ${geo || 'Казахстан'}\n\nТребования:\n- headline: до 40 символов\n- text: 2-3 коротких предложения\n- язык: русский\n- стиль: живой, конкретный, без воды\n- укажи понятную выгоду\n- добавь 1-2 уместных эмодзи\n- не пиши слишком общие фразы вроде "лучшее предложение"\n- не используй markdown\n\nВерни только чистый JSON без пояснений:\n{"headline":"...","text":"..."}`
 
-Сгенерируй 1 сильный рекламный вариант для объявления.
+    const model = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
 
-Данные:
-- Продукт или услуга: ${description}
-- Гео: ${geo || 'Казахстан'}
-
-Требования:
-- headline: до 40 символов
-- text: 2-3 коротких предложения
-- язык: русский
-- стиль: живой, конкретный, без воды
-- укажи понятную выгоду
-- добавь 1-2 уместных эмодзи
-- не пиши слишком общие фразы вроде "лучшее предложение"
-- не используй markdown
-
-Верни только чистый JSON без пояснений:
-{"headline":"...","text":"..."}`
-
-    const aiRes = await fetchWithTimeout('https://api.anthropic.com/v1/messages', {
+    const aiRes = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 300,
+        model,
         temperature: 0.8,
-        messages: [{ role: 'user', content: prompt }]
+        max_tokens: 300,
+        response_format: { type: 'json_object' },
+        messages: [
+          { role: 'system', content: 'You are a helpful assistant. Respond with JSON only.' },
+          { role: 'user', content: prompt }
+        ]
       })
     }, 20000)
 
@@ -94,12 +80,12 @@ export default async function handler(req, res) {
 
     if (!aiRes.ok) {
       return res.status(500).json({
-        error: aiData?.error?.message || 'Anthropic request failed',
+        error: aiData?.error?.message || 'OpenAI request failed',
         details: aiData
       })
     }
 
-    const text = aiData.content?.map(item => item.text || '').join('\n') || ''
+    const text = aiData.choices?.[0]?.message?.content || ''
     const parsed = extractJson(text)
 
     if (!parsed.headline || !parsed.text) {
