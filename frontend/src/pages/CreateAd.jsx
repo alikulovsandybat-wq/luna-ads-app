@@ -283,18 +283,23 @@ export default function CreateAd() {
               </button>
             </div>
 
-            {form.headline && (
-              <>
-                <Field label={t('create.field_headline')}>
-                  <input className={styles.input} value={form.headline}
-                    onChange={e => update('headline', e.target.value)} />
-                </Field>
-                <Field label={t('create.field_text')}>
-                  <textarea className={styles.textarea} value={form.text}
-                    onChange={e => update('text', e.target.value)} rows={4} />
-                </Field>
-              </>
-            )}
+            <Field label={t('create.field_headline')}>
+              <input
+                className={styles.input}
+                value={form.headline}
+                onChange={e => update('headline', e.target.value)}
+                placeholder={t('create.field_headline')}
+              />
+            </Field>
+            <Field label={t('create.field_text')}>
+              <textarea
+                className={styles.textarea}
+                value={form.text}
+                onChange={e => update('text', e.target.value)}
+                rows={4}
+                placeholder={t('create.field_text')}
+              />
+            </Field>
 
             <div className={styles.sectionTitle}>{t('create.section_creative_format')}</div>
             <div className={styles.creativeGrid}>
