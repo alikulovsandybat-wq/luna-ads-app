@@ -11,6 +11,15 @@ export default function Dashboard() {
   const [stats, setStats] = useState(null)
   const [loading, setLoading] = useState(true)
   const [period, setPeriod] = useState('7')
+  const [error, setError] = useState('')
+
+  const fallbackStats = {
+    spend: '0.00',
+    leads: 0,
+    cpl: '0.00',
+    impressions: '0',
+    currency: '$'
+  }
 
   useEffect(() => {
     fetchStats()
@@ -24,24 +33,31 @@ export default function Dashboard() {
         headers: { 'x-tg-data': tgData }
       })
       const data = await res.json()
-      setStats(data)
+      if (!res.ok || data?.error) {
+        setStats(fallbackStats)
+        setError(t('dashboard.no_data'))
+      } else {
+        setStats(data)
+        setError('')
+      }
     } catch (e) {
-      setStats({
-        spend: '543.84',
-        leads: 336,
-        cpl: '1.62',
-        impressions: '148 708',
-        currency: '$'
-      })
+      setStats(fallbackStats)
+      setError(t('dashboard.no_data'))
     }
     setLoading(false)
   }
 
+  const currency = stats?.currency || '$'
+  const spend = stats?.spend ?? '0.00'
+  const leads = stats?.leads ?? 0
+  const cpl = stats?.cpl ?? '0.00'
+  const impressions = stats?.impressions ?? '0'
+
   const METRICS = stats ? [
-    { label: t('dashboard.metric.spend'), value: `${stats.currency}${stats.spend}`, icon: '💸', color: '#ef4444' },
-    { label: t('dashboard.metric.leads'), value: stats.leads, icon: '💬', color: '#7c5cfc' },
-    { label: t('dashboard.metric.cpl'), value: `${stats.currency}${stats.cpl}`, icon: '🎯', color: '#22c55e' },
-    { label: t('dashboard.metric.impressions'), value: stats.impressions, icon: '👁', color: '#f59e0b' }
+    { label: t('dashboard.metric.spend'), value: `${currency}${spend}`, icon: '💸', color: '#ef4444' },
+    { label: t('dashboard.metric.leads'), value: leads, icon: '💬', color: '#7c5cfc' },
+    { label: t('dashboard.metric.cpl'), value: `${currency}${cpl}`, icon: '🎯', color: '#22c55e' },
+    { label: t('dashboard.metric.impressions'), value: impressions, icon: '👁', color: '#f59e0b' }
   ] : []
 
   return (
@@ -78,6 +94,10 @@ export default function Dashboard() {
             ))
         }
       </div>
+
+      {!loading && error && (
+        <div style={{marginTop:8,color:'var(--text2)',fontSize:12}}>{error}</div>
+      )}
 
       <div className={`${styles.autopilot} fade-up-3`}>
         <div className={styles.autopilotTop}>

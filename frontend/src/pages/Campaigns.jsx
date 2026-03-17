@@ -5,18 +5,12 @@ import { useI18n } from '../i18n'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-const MOCK = [
-  { id: 1, date: '24/11/2025', name: 'Уличная кофейня', spend: '$2.63', leads: 1, cpl: '$2.63', budget: '$6.1', active: true },
-  { id: 2, date: '20/09/2025', name: 'Умная Кофейня', spend: '$11.14', leads: 11, cpl: '$1.01', budget: '$36.0', active: true },
-  { id: 3, date: '09/17/2025', name: 'Кофейный Бизнес', spend: '$11.62', leads: 11, cpl: '$1.66', budget: '$38.3', active: true },
-  { id: 4, date: '19/09/2025', name: 'Бизнес на потоке', spend: '$0.00', leads: 0, cpl: '$0.00', budget: '$0.00', active: false }
-]
-
 export default function Campaigns() {
   const navigate = useNavigate()
   const { t } = useI18n()
   const [campaigns, setCampaigns] = useState([])
   const [loading, setLoading] = useState(true)
+  const [error, setError] = useState('')
 
   useEffect(() => {
     fetchCampaigns()
@@ -30,9 +24,18 @@ export default function Campaigns() {
         headers: { 'x-tg-data': tgData }
       })
       const data = await res.json()
-      setCampaigns(data.campaigns || MOCK)
+
+      if (!res.ok || data?.error) {
+        setCampaigns([])
+        setError(t('campaigns.empty'))
+      } else {
+        const list = data.campaigns || []
+        setCampaigns(list)
+        setError(list.length ? '' : t('campaigns.empty'))
+      }
     } catch {
-      setCampaigns(MOCK)
+      setCampaigns([])
+      setError(t('campaigns.empty'))
     }
     setLoading(false)
   }
@@ -84,6 +87,10 @@ export default function Campaigns() {
             </button>
           ))
       }
+
+      {!loading && !campaigns.length && (
+        <div style={{marginTop:12,color:'var(--text2)',fontSize:12}}>{error || t('campaigns.empty')}</div>
+      )}
     </div>
   )
 }
