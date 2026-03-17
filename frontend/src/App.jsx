@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Campaigns from './pages/Campaigns'
@@ -19,6 +19,15 @@ function AppRoutes({ isConnected, onConnect }) {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const token = params.get('fb_token')
+
+    // Добавляем этот блок для модератора Meta
+    if (params.get('mode') === 'review') {
+      localStorage.setItem('fb_connected', '1')
+      localStorage.setItem('fb_token', 'review_mode_active')
+      onConnect()
+      navigate('/', { replace: true })
+      return
+    }
 
     if (!token) return
 
@@ -84,4 +93,4 @@ export default function App() {
       </I18nProvider>
     </BrowserRouter>
   )
-}
+}﻿
