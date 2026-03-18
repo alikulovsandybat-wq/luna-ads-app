@@ -1,4 +1,4 @@
-﻿import { useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styles from './CreateAd.module.css'
 import { useI18n } from '../i18n'
@@ -209,16 +209,25 @@ export default function CreateAd() {
       fd.append('whatsappNumber', form.whatsappNumber)
       if (form.image) fd.append('image', form.image)
 
-      await fetch(`${API}/api/launch`, {
+      const res = await fetch(`${API}/api/launch`, {
         method: 'POST',
         headers: { 'x-tg-data': tgData },
         body: fd
       })
+
+      const data = await res.json()
+
+      if (!res.ok || !data.success) {
+        notify(data.error || t('create.notify.launch_error'))
+        return
+      }
+
       notify(t('create.notify.launch_success'), () => navigate('/campaigns'))
-    } catch {
-      notify(t('create.notify.launch_error'))
+    } catch (err) {
+      notify(t('create.notify.launch_error') + ': ' + (err.message || ''))
+    } finally {
+      setLaunching(false)
     }
-    setLaunching(false)
   }
 
   return (
