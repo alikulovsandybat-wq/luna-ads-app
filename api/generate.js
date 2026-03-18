@@ -9,21 +9,15 @@ const supabase = createClient(
 
 function extractJson(text) {
   const trimmed = (text || '').trim()
-
-  try {
-    return JSON.parse(trimmed)
-  } catch {}
-
+  try { return JSON.parse(trimmed) } catch {}
   const match = trimmed.match(/\{[\s\S]*\}/)
   if (!match) throw new Error('AI did not return JSON')
-
   return JSON.parse(match[0])
 }
 
 async function fetchWithTimeout(url, options, timeoutMs = 20000) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
-
   try {
     return await fetch(url, { ...options, signal: controller.signal })
   } finally {
@@ -48,16 +42,38 @@ export default async function handler(req, res) {
     if (!requireSubscription(user, res)) return
 
     const { description, geo } = req.body || {}
-
     if (!description) return res.status(400).json({ error: 'No description' })
+
     if (!process.env.OPENAI_API_KEY) {
       return res.status(500).json({ error: 'OPENAI_API_KEY is missing in Vercel' })
     }
 
-    const prompt = `Ты senior performance-маркетолог по Facebook Ads.\n\nСгенерируй 1 сильный рекламный вариант для объявления.\n\nДанные:\n- Продукт или услуга: ${description}\n- Гео: ${geo || 'Казахстан'}\n\nТребования:\n- headline: до 40 символов\n- text: 2-3 коротких предложения\n- язык: русский\n- стиль: живой, конкретный, без воды\n- укажи понятную выгоду\n- добавь 1-2 уместных эмодзи\n- не пиши слишком общие фразы вроде "лучшее предложение"\n- не используй markdown\n\nВерни только чистый JSON без пояснений:\n{"headline":"...","text":"..."}`
+    const prompt = `Ты senior performance-маркетолог по Facebook Ads.
+
+Сгенерируй рекламный вариант и таргетинг по интересам для объявления.
+
+Данные:
+- Продукт или услуга: ${description}
+- Гео: ${geo || 'Казахстан'}
+
+Требования к тексту:
+- headline: до 40 символов
+- text: 2-3 коротких предложения
+- язык: русский
+- стиль: живой, конкретный, без воды
+- добавь 1-2 уместных эмодзи
+- не используй markdown
+
+Требования к интересам (interests):
+- 5-8 интересов на английском языке (Facebook использует английские названия интересов)
+- интересы должны быть релевантны продукту
+- используй реальные Facebook interest names (например: "Online shopping", "Fitness", "Cooking")
+- верни как массив строк
+
+Верни только чистый JSON без пояснений:
+{"headline":"...","text":"...","interests":["interest1","interest2","interest3"]}`
 
     const model = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
-
     const aiRes = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -67,7 +83,7 @@ export default async function handler(req, res) {
       body: JSON.stringify({
         model,
         temperature: 0.8,
-        max_tokens: 300,
+        max_tokens: 500,
         response_format: { type: 'json_object' },
         messages: [
           { role: 'system', content: 'You are a helpful assistant. Respond with JSON only.' },
@@ -77,7 +93,6 @@ export default async function handler(req, res) {
     }, 20000)
 
     const aiData = await aiRes.json()
-
     if (!aiRes.ok) {
       return res.status(500).json({
         error: aiData?.error?.message || 'OpenAI request failed',
@@ -94,15 +109,16 @@ export default async function handler(req, res) {
 
     return res.json({
       headline: parsed.headline.trim(),
-      text: parsed.text.trim()
+      text: parsed.text.trim(),
+      interests: Array.isArray(parsed.interests) ? parsed.interests : []
     })
   } catch (e) {
     console.error(e)
-
     if (e.name === 'AbortError') {
       return res.status(504).json({ error: 'AI generation timed out after 20 seconds' })
     }
-
     return res.status(500).json({ error: e.message || 'Generation error' })
+  }
+}
   }
 }
