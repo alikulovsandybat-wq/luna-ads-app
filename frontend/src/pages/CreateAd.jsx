@@ -52,7 +52,9 @@ export default function CreateAd() {
 
   const ctaTypes = [
     { id: 'MESSAGE_PAGE', label: t('create.cta.message') },
-    { id: 'WHATSAPP_MESSAGE', label: t('create.cta.whatsapp') }
+    { id: 'WHATSAPP_MESSAGE', label: t('create.cta.whatsapp') },
+    { id: 'TELEGRAM', label: '✈️ Telegram' },
+    { id: 'LEARN_MORE', label: '🌐 ' + (t('create.cta.website') || 'Сайт') },
   ]
 
   const [form, setForm] = useState({
@@ -71,7 +73,9 @@ export default function CreateAd() {
     mediaName: '',
     creativeType: 'photo',
     ctaType: 'MESSAGE_PAGE',
-    whatsappNumber: ''
+    whatsappNumber: '',
+    ctaUrl: '',
+    aiInterests: []
   })
 
   function update(key, val) {
@@ -101,6 +105,10 @@ export default function CreateAd() {
 
       update('headline', data.headline)
       update('text', data.text)
+      if (data.interests?.length) {
+        update('aiInterests', data.interests)
+        update('interests', data.interests.join(', '))
+      }
     } catch (error) {
       const message = error?.name === 'AbortError'
         ? t('create.notify.ai_text_timeout')
@@ -189,6 +197,11 @@ export default function CreateAd() {
       return
     }
 
+    if ((form.ctaType === 'TELEGRAM' || form.ctaType === 'LEARN_MORE') && !form.ctaUrl) {
+      notify('Укажите ссылку')
+      return
+    }
+
     if (form.creativeType === 'video' || form.creativeType === 'reels') {
       notify(t('create.notify.video_block'))
       return
@@ -202,11 +215,12 @@ export default function CreateAd() {
       fd.append('geo', form.geo)
       fd.append('ageMin', form.ageMin)
       fd.append('ageMax', form.ageMax)
-      fd.append('interests', form.interests)
+      fd.append('interests', JSON.stringify(form.aiInterests?.length ? form.aiInterests : form.interests ? form.interests.split(',').map(s => s.trim()).filter(Boolean) : []))
       fd.append('headline', form.headline)
       fd.append('text', form.text)
       fd.append('ctaType', form.ctaType)
       fd.append('whatsappNumber', form.whatsappNumber)
+      fd.append('ctaUrl', form.ctaUrl)
       if (form.image) fd.append('image', form.image)
 
       const res = await fetch(`${API}/api/launch`, {
@@ -291,6 +305,27 @@ export default function CreateAd() {
                 {generating ? t('create.ai_text_loading') : t('create.ai_text')}
               </button>
             </div>
+
+            {form.aiInterests?.length > 0 && (
+              <div style={{
+                background: 'rgba(124,92,252,0.08)', border: '1px solid rgba(124,92,252,0.25)',
+                borderRadius: 12, padding: '10px 14px', marginBottom: 16
+              }}>
+                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
+                  🎯 ИИ подобрал интересы для таргетинга:
+                </div>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                  {form.aiInterests.map((interest, i) => (
+                    <span key={i} style={{
+                      fontSize: 11, padding: '3px 10px', borderRadius: 20,
+                      background: 'rgba(124,92,252,0.2)', color: '#a78bfa', fontWeight: 500
+                    }}>
+                      {interest}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
 
             <Field label={t('create.field_headline')}>
               <input
@@ -398,6 +433,28 @@ export default function CreateAd() {
                 />
               </Field>
             )}
+
+            {form.ctaType === 'TELEGRAM' && (
+              <Field label="Ссылка на Telegram">
+                <input
+                  className={styles.input}
+                  value={form.ctaUrl}
+                  onChange={e => update('ctaUrl', e.target.value)}
+                  placeholder="https://t.me/username"
+                />
+              </Field>
+            )}
+
+            {form.ctaType === 'LEARN_MORE' && (
+              <Field label="Ссылка на сайт">
+                <input
+                  className={styles.input}
+                  value={form.ctaUrl}
+                  onChange={e => update('ctaUrl', e.target.value)}
+                  placeholder="https://yoursite.com"
+                />
+              </Field>
+            )}
           </div>
         )}
 
@@ -414,6 +471,15 @@ export default function CreateAd() {
                 value={form.image
                   ? (form.mediaType === 'video' ? t('create.summary_creative_video') : t('create.summary_creative_photo'))
                   : t('create.summary_creative_missing')
+                }
+              />
+              <SummaryRow
+                label="CTA"
+                value={
+                  form.ctaType === 'WHATSAPP_MESSAGE' ? `WhatsApp: ${form.whatsappNumber}` :
+                  form.ctaType === 'TELEGRAM' ? `Telegram: ${form.ctaUrl}` :
+                  form.ctaType === 'LEARN_MORE' ? `Сайт: ${form.ctaUrl}` :
+                  'Написать на страницу'
                 }
               />
             </div>
