@@ -37,6 +37,18 @@ export default async function handler(req, res) {
     const text = fields.text?.[0] || ''
     const ctaType = fields.ctaType?.[0] || 'MESSAGE_PAGE'
     const whatsappNumber = fields.whatsappNumber?.[0] || ''
+    const ctaUrl = fields.ctaUrl?.[0] || ''
+    // interests: может прийти как JSON-массив строк или как строка через запятую
+    let interests = []
+    const interestsRaw = fields.interests?.[0] || ''
+    if (interestsRaw) {
+      try {
+        interests = JSON.parse(interestsRaw)
+      } catch {
+        interests = interestsRaw.split(',').map(s => s.trim()).filter(Boolean)
+      }
+    }
+
     const token = user.fb_access_token
     const adAccountId = user.fb_ad_account_id
 
@@ -48,34 +60,50 @@ export default async function handler(req, res) {
       return res.status(400).json({ error: 'WhatsApp number required' })
     }
 
+    if ((ctaType === 'TELEGRAM' || ctaType === 'LEARN_MORE') && !ctaUrl) {
+      return res.status(400).json({ error: 'URL required for this CTA type' })
+    }
+
     // ── Step 1: Create Campaign ──
     const campaignRes = await fbPost(`/${adAccountId}/campaigns`, token, {
       name: `Luna Ads — ${headline.slice(0, 30)} — ${new Date().toLocaleDateString('ru')}`,
-      objective: 'OUTCOME_TRAFFIC',  // FIX: OUTCOME_LEADS requires special setup; OUTCOME_TRAFFIC works for all accounts
+      objective: 'OUTCOME_TRAFFIC',
       status: 'ACTIVE',
-      special_ad_categories: []
+      special_ad_categories: [],
+      is_adset_budget_sharing_enabled: false
     })
 
     if (!campaignRes.id) {
       console.error('Campaign FB error:', JSON.stringify(campaignRes))
-      const fbErr = campaignRes.error?.message || JSON.stringify(campaignRes)
-      return res.status(400).json({ error: `Facebook Campaign Error: ${fbErr}` })
+      return res.status(400).json({ error: `Facebook Campaign Error: ${campaignRes.error?.message || JSON.stringify(campaignRes)}` })
     }
     const campaignId = campaignRes.id
 
-    // ── Step 2: Create Ad Set ──
+    // ── Step 2: Resolve interests via Facebook API ──
+    // Facebook targeting requires interest IDs, not names
+    // We search for each interest and get its ID
+    let interestTargeting = []
+    if (interests.length > 0) {
+      interestTargeting = await resolveInterests(interests, token)
+    }
+
+    // ── Step 3: Create Ad Set ──
     const countryCode = geoToCountry(geo)
     const targeting = {
-      geo_locations: { countries: [countryCode] },  // FIX: removed cities with invalid key
+      geo_locations: { countries: [countryCode] },
       age_min: parseInt(ageMin),
       age_max: parseInt(ageMax),
+    }
+    // Only add interests if we resolved at least one
+    if (interestTargeting.length > 0) {
+      targeting.flexible_spec = [{ interests: interestTargeting }]
     }
 
     const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
       name: `Группа — ${geo} ${ageMin}-${ageMax}`,
       campaign_id: campaignId,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'LINK_CLICKS',  // FIX: matches OUTCOME_TRAFFIC objective
+      optimization_goal: 'LINK_CLICKS',
       daily_budget: Math.round(parseFloat(budget) * 100),
       targeting,
       status: 'ACTIVE'
@@ -83,12 +111,11 @@ export default async function handler(req, res) {
 
     if (!adSetRes.id) {
       console.error('AdSet FB error:', JSON.stringify(adSetRes))
-      const fbErr = adSetRes.error?.message || JSON.stringify(adSetRes)
-      return res.status(400).json({ error: `Facebook AdSet Error: ${fbErr}` })
+      return res.status(400).json({ error: `Facebook AdSet Error: ${adSetRes.error?.message || JSON.stringify(adSetRes)}` })
     }
     const adSetId = adSetRes.id
 
-    // ── Step 3: Upload image (if provided) ──
+    // ── Step 4: Upload image ──
     let imageHash = null
     const imageFile = files.image?.[0]
     if (imageFile) {
@@ -98,14 +125,14 @@ export default async function handler(req, res) {
       imageHash = Object.values(imgRes.images || {})[0]?.hash
     }
 
-    // ── Step 4: Get Page ID ──
+    // ── Step 5: Get Page ID ──
     const pageId = process.env.FB_PAGE_ID || await getPageId(token)
     if (!pageId) {
-      return res.status(400).json({ error: 'Could not find Facebook Page. Make sure your account has a Page.' })
+      return res.status(400).json({ error: 'Could not find Facebook Page.' })
     }
 
-    // ── Step 5: Create Ad Creative ──
-    const creativeBody = {
+    // ── Step 6: Create Ad Creative ──
+    const creativeRes = await fbPost(`/${adAccountId}/adcreatives`, token, {
       name: `Креатив — ${headline.slice(0, 20)}`,
       object_story_spec: {
         page_id: pageId,
@@ -113,32 +140,28 @@ export default async function handler(req, res) {
           message: text,
           name: headline,
           link: process.env.APP_URL || 'https://t.me/marketologluna_bot',
-          call_to_action: buildCallToAction(ctaType, whatsappNumber),
+          call_to_action: buildCallToAction(ctaType, whatsappNumber, ctaUrl),
           ...(imageHash ? { image_hash: imageHash } : {})
         }
       }
-    }
+    })
 
-    const creativeRes = await fbPost(`/${adAccountId}/adcreatives`, token, creativeBody)
     if (!creativeRes.id) {
       console.error('Creative FB error:', JSON.stringify(creativeRes))
-      const fbErr = creativeRes.error?.message || JSON.stringify(creativeRes)
-      return res.status(400).json({ error: `Facebook Creative Error: ${fbErr}` })
+      return res.status(400).json({ error: `Facebook Creative Error: ${creativeRes.error?.message || JSON.stringify(creativeRes)}` })
     }
-    const creativeId = creativeRes.id
 
-    // ── Step 6: Create Ad ──
+    // ── Step 7: Create Ad ──
     const adRes = await fbPost(`/${adAccountId}/ads`, token, {
       name: headline,
       adset_id: adSetId,
-      creative: { creative_id: creativeId },
+      creative: { creative_id: creativeRes.id },
       status: 'ACTIVE'
     })
 
     if (!adRes.id) {
       console.error('Ad FB error:', JSON.stringify(adRes))
-      const fbErr = adRes.error?.message || JSON.stringify(adRes)
-      return res.status(400).json({ error: `Facebook Ad Error: ${fbErr}` })
+      return res.status(400).json({ error: `Facebook Ad Error: ${adRes.error?.message || JSON.stringify(adRes)}` })
     }
 
     // Save to Supabase
@@ -172,15 +195,38 @@ async function fbPost(path, token, body) {
   return res.json()
 }
 
+// Search Facebook for interest IDs by name
+async function resolveInterests(interests, token) {
+  const resolved = []
+  for (const interest of interests) {
+    try {
+      const res = await fetch(
+        `https://graph.facebook.com/v18.0/search?type=adinterest&q=${encodeURIComponent(interest)}&access_token=${token}`
+      )
+      const data = await res.json()
+      const match = data.data?.[0]
+      if (match?.id && match?.name) {
+        resolved.push({ id: match.id, name: match.name })
+      }
+    } catch {
+      // skip unresolved interest
+    }
+  }
+  return resolved
+}
+
 async function getPageId(token) {
   const res = await fetch(`https://graph.facebook.com/v18.0/me/accounts?access_token=${token}`)
   const data = await res.json()
   return data.data?.[0]?.id || null
 }
 
-function buildCallToAction(ctaType, whatsappNumber) {
+function buildCallToAction(ctaType, whatsappNumber, ctaUrl) {
   if (ctaType === 'WHATSAPP_MESSAGE') {
     return { type: 'WHATSAPP_MESSAGE', value: { phone_number: normalizePhone(whatsappNumber) } }
+  }
+  if (ctaType === 'TELEGRAM' || ctaType === 'LEARN_MORE') {
+    return { type: 'LEARN_MORE', value: { link: ctaUrl } }
   }
   return { type: 'MESSAGE_PAGE' }
 }
