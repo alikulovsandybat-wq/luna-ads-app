@@ -1,3 +1,4 @@
+//add  zavisimosti
 import { createClient } from '@supabase/supabase-js'
 import { getTgUserId, requireSubscription } from './_subscription.js'
 import { IncomingForm } from 'formidable'
