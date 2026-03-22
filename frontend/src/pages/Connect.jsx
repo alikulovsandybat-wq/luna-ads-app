@@ -12,15 +12,20 @@ export default function Connect({ onConnect }) {
   const { t } = useI18n()
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search)
-    const token = params.get('fb_token')
-    if (token) {
-      localStorage.setItem('fb_connected', '1')
-      localStorage.setItem('fb_token', token)
-      onConnect()
-      navigate('/')
-    }
-  }, [navigate, onConnect])
+  const params = new URLSearchParams(window.location.search)
+  const token = params.get('fb_token')
+  const tgUserId = params.get('state') // Обычно state — это наш tgUserId (tg_userid_hash)
+
+  if (token && tgUserId) {
+    localStorage.setItem('fb_connected', '1')
+    localStorage.setItem('fb_token', token)
+    // НОВЫЙ БЛОК: Запоминаем tgUserId, чтобы использовать его в Safari
+    localStorage.setItem('luna_tg_userid', tgUserId) 
+
+    onConnect()
+    navigate('/')
+  }
+}, [navigate, onConnect])
 
   function connectFacebook() {
     const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || 'dev'
