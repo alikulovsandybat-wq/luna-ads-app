@@ -11,13 +11,13 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 function buildPrompt({ prompt, description, hasReference }) {
   const product = prompt?.trim() || description || 'premium product';
   const instruction = hasReference 
-    ? "Enhance this reference: improve lighting, make it professional commercial shot." 
+    ? "Enhance this reference: improve lighting, make it professional commercial shot. Keep the same object." 
     : "Create a minimalist commercial photo of the product.";
 
-  return `${instruction} Subject: ${product}. Style: Quiet luxury, minimalist, premium quality, professional lighting. Background: Blurred aesthetic bokeh. CRITICAL: No text or logos on image. Leave space at top and bottom.`;
+  return `${instruction} Subject: ${product}. Style: Quiet luxury, minimalist, premium quality, professional lighting. Background: Blurred aesthetic bokeh. CRITICAL: No text or logos on image. Leave space at top and bottom for text overlays.`;
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 70000) {
+async function fetchWithTimeout(url, options, timeoutMs = 85000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try { return await fetch(url, { ...options, signal: controller.signal }); }
@@ -39,7 +39,16 @@ export default async function handler(req, res) {
 
   try {
     const tgUserId = getTgUserId(req);
-    const { data: user } = await supabase.from('users').select('subscription_active').eq('tg_user_id', tgUserId).single();
+    if (!tgUserId) return res.status(401).json({ error: 'User ID not found' });
+
+    // Получаем данные пользователя из Supabase
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('*')
+      .eq('tg_user_id', tgUserId)
+      .single();
+
+    if (userError || !user) return res.status(404).json({ error: 'User not found in database' });
     if (!requireSubscription(user, res)) return;
 
     const { fields, files } = await parseForm(req);
@@ -58,6 +67,7 @@ export default async function handler(req, res) {
 
     // ГЕНЕРАЦИЯ КАРТИНКИ
     if (referenceImage) {
+      // Для DALL-E 2 (Edits) нужен формат PNG < 4MB
       const buffer = fs.readFileSync(referenceImage.filepath);
       const formData = new FormData();
       formData.append('model', 'dall-e-2'); 
@@ -65,7 +75,9 @@ export default async function handler(req, res) {
       formData.append('n', '1');
       formData.append('size', '1024x1024');
       formData.append('response_format', 'b64_json');
-      formData.append('image', new Blob([buffer], { type: 'image/png' }), 'ref.png');
+      
+      const fileBlob = new Blob([buffer], { type: 'image/png' });
+      formData.append('image', fileBlob, 'ref.png');
 
       openAiRes = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
         method: 'POST',
@@ -79,7 +91,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'dall-e-3',
           prompt: finalPrompt,
-          n: 1, // Всегда 1 для экономии и стабильности
+          n: 1,
           size: '1024x1024',
           response_format: 'b64_json'
         })
@@ -88,41 +100,39 @@ export default async function handler(req, res) {
 
     const data = await openAiRes.json();
     const base64FromAi = data?.data?.[0]?.b64_json;
-    if (!base64FromAi) throw new Error(data?.error?.message || 'OpenAI failed');
+    if (!base64FromAi) throw new Error(data?.error?.message || 'OpenAI API error');
 
-    // ГРАФИЧЕСКАЯ СБОРКА ЧЕРЕЗ SHARP (Наложение текста)
+    // СБОРКА ЧЕРЕЗ SHARP
     const bgBuffer = Buffer.from(base64FromAi, 'base64');
     
-    // Генерируем SVG оверлей только если есть текст
+    // SVG оверлей (используем sans-serif для совместимости с Linux/Vercel)
     const svgOverlay = Buffer.from(`
       <svg width="1024" height="1024">
         ${headline ? `
-          <rect x="0" y="0" width="1024" height="160" fill="rgba(0,0,0,0.5)" />
-          <text x="512" y="95" font-family="Arial, sans-serif" font-size="44" font-weight="bold" fill="white" text-anchor="middle">${headline.toUpperCase()}</text>
+          <rect x="0" y="0" width="1024" height="180" fill="rgba(0,0,0,0.4)" />
+          <text x="512" y="100" font-family="sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">${headline.toUpperCase()}</text>
         ` : ''}
         
-        <rect x="312" y="860" width="400" height="90" rx="15" fill="#1a1a1a" stroke="#D4AF37" stroke-width="4" />
-        <text x="512" y="918" font-family="Arial, sans-serif" font-size="30" font-weight="bold" fill="white" text-anchor="middle">${buttonText.toUpperCase()}</text>
+        <rect x="312" y="860" width="400" height="90" rx="45" fill="#1a1a1a" stroke="#D4AF37" stroke-width="4" />
+        <text x="512" y="918" font-family="sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${buttonText.toUpperCase()}</text>
       </svg>
     `);
 
     const finalBuffer = await sharp(bgBuffer)
       .composite([{ input: svgOverlay, top: 0, left: 0 }])
-      .jpeg({ quality: 90 })
+      .jpeg({ quality: 95 })
       .toBuffer();
 
-    // Возвращаем результат в формате, который понимает наш обновленный CreateAd.jsx
     return res.json({
       images: [{
         imageBase64: finalBuffer.toString('base64'),
         mimeType: 'image/jpeg'
       }],
-      revisedPrompt: data?.data?.[0]?.revised_prompt,
-      mode: referenceImage ? 'edit' : 'generate'
+      revisedPrompt: data?.data?.[0]?.revised_prompt
     });
 
   } catch (error) {
-    console.error('Error:', error);
+    console.error('API Error:', error);
     res.status(500).json({ error: error.message });
   }
 }
