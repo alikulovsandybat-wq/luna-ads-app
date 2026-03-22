@@ -7,6 +7,7 @@ import CreateAd from './pages/CreateAd'
 import Connect from './pages/Connect'
 import Privacy from './pages/Privacy'
 import Terms from './pages/Terms'
+import Profile from './pages/Profile'
 import Layout from './components/Layout'
 import { I18nProvider } from './i18n'
 
@@ -19,13 +20,10 @@ function AppRoutes({ isConnected, onConnect }) {
   useEffect(() => {
     const params = new URLSearchParams(location.search)
     const token = params.get('fb_token')
-
     if (!token) return
-
     localStorage.setItem('fb_connected', '1')
     localStorage.setItem('fb_token', token)
     onConnect()
-
     navigate('/', { replace: true })
   }, [location.search, navigate, onConnect])
 
@@ -39,6 +37,7 @@ function AppRoutes({ isConnected, onConnect }) {
         <Route path="/campaigns" element={isConnected ? <Campaigns /> : <Navigate to="/connect" />} />
         <Route path="/campaigns/:id" element={isConnected ? <CampaignDetails /> : <Navigate to="/connect" />} />
         <Route path="/create" element={isConnected ? <CreateAd /> : <Navigate to="/connect" />} />
+        <Route path="/profile" element={isConnected ? <Profile /> : <Navigate to="/connect" />} />
       </Route>
     </Routes>
   )
@@ -52,8 +51,8 @@ export default function App() {
     if (tg) {
       tg.ready()
       tg.expand()
-      tg.setHeaderColor('#0a0a0f')
-      tg.setBackgroundColor('#0a0a0f')
+      tg.setHeaderColor('#ffffff')
+      tg.setBackgroundColor('#F9FAFB')
     }
 
     const fbConnected = localStorage.getItem('fb_connected')
@@ -64,12 +63,12 @@ export default function App() {
   if (!isReady) return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      height: '100vh', background: '#0a0a0f'
+      height: '100vh', background: '#F9FAFB'
     }}>
       <div style={{ textAlign: 'center' }}>
         <div style={{
           width: 48, height: 48, borderRadius: '50%',
-          border: '3px solid #7c5cfc', borderTopColor: 'transparent',
+          border: '3px solid #007AFF', borderTopColor: 'transparent',
           animation: 'spin 0.8s linear infinite', margin: '0 auto 16px'
         }} />
         <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
