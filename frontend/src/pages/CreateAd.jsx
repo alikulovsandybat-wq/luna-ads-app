@@ -117,33 +117,31 @@ export default function CreateAd() {
         fd.append('reference_image', form.image)
       }
 
-      const res = await fetch(`${API}/api/generate-image`, {
+      async function launch() {
+    // ... твой код проверок (CTA, URL и т.д.) ...
+
+    setLaunching(true)
+    try {
+      const fd = new FormData()
+      // ... здесь твои append (budget, geo, headline и т.д.) ...
+      if (form.image) fd.append('image', form.image)
+
+      const res = await fetch(`${API}/api/launch`, {
         method: 'POST',
-        headers: getAuthHeaders(),
-        body: fd,
-        signal: controller.signal
+        headers: getAuthHeaders(), // ЗАМЕНИ НА ЭТО
+        body: fd
       })
-
+      
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
-
-      // Обрабатываем ОДНУ картинку из массива (или старый формат)
-      const imgData = data.images?.[0] || data
-      if (imgData.imageBase64) {
-        const file = base64ToFile(imgData.imageBase64, imgData.mimeType || 'image/jpeg', 'ai-creative.jpg')
-        update('image', file)
-        update('imagePreview', `data:${imgData.mimeType || 'image/jpeg'};base64,${imgData.imageBase64}`)
-        update('mediaType', 'image')
-        
-        if (data.revisedPrompt) update('imagePrompt', data.revisedPrompt)
-        notify("Креатив готов! Если не нравится — нажми еще раз для нового варианта.")
+      if (!res.ok || !data.success) {
+        notify(data.error || t('create.notify.launch_error'))
+        return
       }
-
-    } catch (error) {
-      notify(error?.name === 'AbortError' ? t('create.notify.ai_image_timeout') : (error?.message || t('create.notify.ai_image_fail')))
+      notify(t('create.notify.launch_success'), () => navigate('/campaigns'))
+    } catch (err) {
+      notify(t('create.notify.launch_error') + ': ' + (err.message || ''))
     } finally {
-      clearTimeout(timeoutId)
-      setGeneratingImage(false)
+      setLaunching(false)
     }
   }
 
