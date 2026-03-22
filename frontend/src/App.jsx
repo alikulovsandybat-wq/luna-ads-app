@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Campaigns from './pages/Campaigns'
@@ -21,8 +21,23 @@ function AppRoutes({ isConnected, onConnect }) {
     const params = new URLSearchParams(location.search)
     const token = params.get('fb_token')
     if (!token) return
+
+    // Сохраняем флаг подключения
     localStorage.setItem('fb_connected', '1')
     localStorage.setItem('fb_token', token)
+
+    // Сохраняем tg_user_id если пришёл из callback
+    const tgUserIdFromCallback = params.get('tg_user_id')
+    if (tgUserIdFromCallback) {
+      localStorage.setItem('luna_tg_userid', tgUserIdFromCallback)
+    }
+
+    // Fallback: берём из Telegram WebApp если доступен
+    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+    if (tgId && !localStorage.getItem('luna_tg_userid')) {
+      localStorage.setItem('luna_tg_userid', String(tgId))
+    }
+
     onConnect()
     navigate('/', { replace: true })
   }, [location.search, navigate, onConnect])
