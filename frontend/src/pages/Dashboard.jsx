@@ -3,35 +3,25 @@ import { useNavigate } from 'react-router-dom'
 import styles from './Dashboard.module.css'
 import { useI18n } from '../i18n'
 
-const API = import.meta.env.VITE_API_URL || ''
+// --- ИМПОРТЫ ДЛЯ НОВОГО ПЛАВНОГО ГРАФИКА ---
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  PointElement,
+  LineElement,
+  Title,
+  Tooltip,
+  Filler,
+  Legend
+} from 'chart.js';
+import { Line } from 'react-chartjs-2';
 
-// Обновленный график (теперь выше и чище)
-function BarChart({ data, dataKey, color = '#007AFF', height = 120 }) {
-  if (!data || data.length === 0) return null
-  const max = Math.max(...data.map(d => d[dataKey] || 0), 1)
-  return (
-    <div style={{ display: 'flex', alignItems: 'flex-end', gap: 4, height, paddingTop: 20 }}>
-      {data.map((d, i) => {
-        const pct = ((d[dataKey] || 0) / max) * 100
-        return (
-          <div key={i} style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', height: '100%', justifyContent: 'flex-end' }}>
-            <div
-              style={{
-                width: '100%',
-                height: `${Math.max(pct, 4)}%`,
-                background: color,
-                borderRadius: '4px 4px 0 0',
-                opacity: 0.9,
-                transition: 'height 0.6s cubic-bezier(0.4, 0, 0.2, 1)',
-              }}
-              title={`${d.date}: ${d[dataKey]}`}
-            />
-          </div>
-        )
-      })}
-    </div>
-  )
-}
+ChartJS.register(
+  CategoryScale, LinearScale, PointElement, LineElement, Title, Tooltip, Filler, Legend
+);
+
+const API = import.meta.env.VITE_API_URL || ''
 
 export default function Dashboard() {
   const navigate = useNavigate()
@@ -48,9 +38,13 @@ export default function Dashboard() {
   async function fetchStats() {
     setLoading(true)
     try {
-      const tgData = window.Telegram?.WebApp?.initData || ''
+      // Пытаемся взять данные из LocalStorage если мы в браузере, или из TG
+      const tgData = window.Telegram?.WebApp?.initData || localStorage.getItem('luna_tg_data') || ''
       const res = await fetch(`${API}/api/stats?days=${period}`, {
-        headers: { 'x-tg-data': tgData }
+        headers: { 
+          'x-tg-data': tgData,
+          'x-tg-userid': localStorage.getItem('luna_tg_userid') || '' 
+        }
       })
       const data = await res.json()
       setStats(data || {})
@@ -60,24 +54,49 @@ export default function Dashboard() {
     setLoading(false)
   }
 
+  // --- ПОДГОТОВКА ДАННЫХ ДЛЯ ГРАФИКА ---
   const daily = stats?.daily || []
-  const currency = stats?.currency || '$'
+  const chartData = {
+    labels: daily.map(d => d.date),
+    datasets: [
+      {
+        fill: true,
+        label: chartMetric === 'impressions' ? 'Views' : 'Spend',
+        data: daily.map(d => d[chartMetric]),
+        borderColor: '#007AFF', // Цвет линии
+        backgroundColor: 'rgba(0, 122, 255, 0.1)', // Заливка под линией
+        tension: 0.4, // ЭТО ДЕЛАЕТ ЛИНИЮ ПЛАВНОЙ (как ты просила!)
+        borderWidth: 3,
+        pointRadius: 2,
+      },
+    ],
+  };
 
+  const chartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: { legend: { display: false } },
+    scales: {
+      y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.05)' } },
+      x: { display: false } // Скрываем даты внизу для чистоты, как на рефе
+    }
+  };
+
+  const currency = stats?.currency || '$'
   const METRICS = [
-    { label: 'Spend', value: `${currency}${stats?.spend || '0'}`, icon: '💸', color: '#007AFF' },
-    { label: 'Leads', value: stats?.leads || '0', icon: '🎯', color: '#10B981' },
-    { label: 'CPL', value: `${currency}${stats?.cpl || '0'}`, icon: '💰', color: '#6366F1' },
-    { label: 'Clicks', value: stats?.clicks || '0', icon: '🖱', color: '#F59E0B' },
+    { label: 'Spend', value: `${currency}${stats?.spend || '0'}`, icon: '💸' },
+    { label: 'Leads', value: stats?.leads || '0', icon: '🎯' },
+    { label: 'CPL', value: `${currency}${stats?.cpl || '0'}`, icon: '💰' },
+    { label: 'Clicks', value: stats?.clicks || '0', icon: '🖱' },
   ]
 
   return (
     <div className={styles.page}>
-      {/* HEADER С ПРОФИЛЕМ (как на рефе 12) */}
       <div className={styles.topProfile}>
         <div className={styles.userInfo}>
           <div className={styles.avatar}>🌙</div>
           <div>
-            <div className={styles.userName}>Ad Account #1493...</div>
+            <div className={styles.userName}>Ad Account #{stats?.account_id || '1493...'}</div>
             <div className={styles.userStatus}>Elite Plan • Active</div>
           </div>
         </div>
@@ -89,7 +108,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* KPI GRID */}
       <div className={styles.grid}>
         {METRICS.map((m, i) => (
           <div key={i} className={styles.card}>
@@ -99,19 +117,27 @@ export default function Dashboard() {
         ))}
       </div>
 
-      {/* CHART BOX */}
       <div className={styles.chartSection}>
         <div className={styles.chartHeader}>
           <h3>Analytics Dynamic</h3>
           <div className={styles.chartTabs}>
-            <button onClick={() => setChartMetric('impressions')} className={chartMetric === 'impressions' ? styles.activeTab : ''}>Views</button>
-            <button onClick={() => setChartMetric('spend')} className={chartMetric === 'spend' ? styles.activeTab : ''}>Spend</button>
+            <button 
+              onClick={() => setChartMetric('impressions')} 
+              className={chartMetric === 'impressions' ? styles.activeTab : ''}
+            >Views</button>
+            <button 
+              onClick={() => setChartMetric('spend')} 
+              className={chartMetric === 'spend' ? styles.activeTab : ''}
+            >Spend</button>
           </div>
         </div>
-        <BarChart data={daily} dataKey={chartMetric} height={140} />
+        
+        {/* ЗАМЕНИЛИ BarChart НА НАСТОЯЩУЮ ЛИНИЮ */}
+        <div style={{ height: 160, marginTop: 10 }}>
+          <Line data={chartData} options={chartOptions} />
+        </div>
       </div>
 
-      {/* ACTION BUTTONS */}
       <div className={styles.actions}>
         <button className={styles.primaryBtn} onClick={() => navigate('/create')}>
           <span>🚀</span> Create New Campaign
