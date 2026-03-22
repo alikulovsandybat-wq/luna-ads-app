@@ -107,7 +107,7 @@ function PlatformRow({ platform, impressions, reach, spend, total }) {
         }} />
       </div>
       <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 4 }}>
-        Охват: {reach.toLocaleString('ru-RU')} · {pct}% от общего
+        {reach.toLocaleString('ru-RU')} · {pct}%
       </div>
     </div>
   )
@@ -175,17 +175,17 @@ export default function Dashboard() {
   const METRICS = stats ? [
     { label: t('dashboard.metric.spend'),       value: `${currency}${spend}`,  icon: '💸', color: '#ef4444' },
     { label: t('dashboard.metric.impressions'), value: impressions,             icon: '👁',  color: '#f59e0b' },
-    { label: 'Охват',                           value: reach,                   icon: '📡', color: '#007AFF' },
-    { label: 'Клики',                           value: clicks,                  icon: '🖱',  color: '#22c55e' },
+    { label: t('dashboard.metric.reach'),       value: reach,                   icon: '📡', color: '#007AFF' },
+    { label: t('dashboard.metric.clicks'),      value: clicks,                  icon: '🖱',  color: '#22c55e' },
     { label: t('dashboard.metric.leads'),       value: leads,                   icon: '💬', color: '#06b6d4' },
     { label: t('dashboard.metric.cpl'),         value: `${currency}${cpl}`,    icon: '🎯', color: '#ec4899' },
   ] : []
 
   const chartMetrics = [
-    { key: 'impressions', label: 'Показы',  color: '#f59e0b' },
-    { key: 'reach',       label: 'Охват',   color: '#007AFF' },
-    { key: 'clicks',      label: 'Клики',   color: '#22c55e' },
-    { key: 'spend',       label: 'Расход',  color: '#ef4444' },
+    { key: 'impressions', label: t('dashboard.metric.impressions'), color: '#f59e0b' },
+    { key: 'reach',       label: t('dashboard.metric.reach'),       color: '#007AFF' },
+    { key: 'clicks',      label: t('dashboard.metric.clicks'),      color: '#22c55e' },
+    { key: 'spend',       label: t('dashboard.metric.spend'),       color: '#ef4444' },
   ]
   const activeChart = chartMetrics.find(m => m.key === chartMetric) || chartMetrics[0]
 
@@ -240,7 +240,7 @@ export default function Dashboard() {
         <div className={styles.chartSection}>
           <div className={styles.chartHeader}>
             <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)' }}>
-              📈 Динамика за {period} дней
+              📈 {t('dashboard.chart.title')} {period} {t('period.days_short')}
             </div>
             <div style={{ display: 'flex', gap: 4, background: 'var(--bg3)', padding: 4, borderRadius: 10 }}>
               {chartMetrics.map(m => (
@@ -272,7 +272,7 @@ export default function Dashboard() {
             </>
           ) : (
             <div style={{ height: 80, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text3)', fontSize: 13 }}>
-              Нет данных за период
+              {t('dashboard.no_data')}
             </div>
           )}
         </div>
@@ -282,7 +282,7 @@ export default function Dashboard() {
       {!loading && platforms.length > 0 && (
         <div className={styles.platformSection}>
           <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text)', marginBottom: 16 }}>
-            📊 Площадки
+            📊 {t('dashboard.platforms')}
           </div>
           {platforms.map((p, i) => (
             <PlatformRow key={i}
