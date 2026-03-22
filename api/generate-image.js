@@ -84,9 +84,10 @@ export default async function handler(req, res) {
       // Есть референс — используем DALL-E 2 edit
       const imageBuffer = fs.readFileSync(referenceImage.filepath)
 
-      // Конвертируем в PNG и делаем квадратным для DALL-E
+      // Конвертируем в PNG с альфа-каналом (RGBA) — DALL-E 2 edit требует именно это
       const pngBuffer = await sharp(imageBuffer)
         .resize(1024, 1024, { fit: 'cover' })
+        .ensureAlpha() // добавляем альфа-канал → RGBA
         .png()
         .toBuffer()
 
