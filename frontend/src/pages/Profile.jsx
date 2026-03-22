@@ -6,9 +6,9 @@ const API = import.meta.env.VITE_API_URL || ''
 
 // ── Замени эти ссылки на реальные из LemonSqueezy после создания продуктов ──
 const CHECKOUT_URLS = {
-  starter:   'https://lunaads.lemonsqueezy.com/buy/starter',
-  autopilot: 'https://lunaads.lemonsqueezy.com/buy/autopilot',
-  agency:    'https://lunaads.lemonsqueezy.com/buy/agency',
+  starter:   'https://lunatargetapp.lemonsqueezy.com/checkout/buy/88687c18-b8ff-4eba-b8c9-09a97cb23028',
+  autopilot: 'https://lunatargetapp.lemonsqueezy.com/checkout/buy/aa31b431-01f2-4b67-94e4-bdf52aceb43d',
+  agency:    'https://lunatargetapp.lemonsqueezy.com/checkout/buy/f261d1a2-33a9-4a52-8942-116bbae0e939',
 }
 
 export default function Profile() {
