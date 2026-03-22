@@ -27,7 +27,6 @@ export default function CreateAd() {
   const navigate = useNavigate()
   const { t } = useI18n()
   const photoInputRef = useRef(null)
-  const videoInputRef = useRef(null)
   const [step, setStep] = useState(0)
   const [generating, setGenerating] = useState(false)
   const [generatingImage, setGeneratingImage] = useState(false)
@@ -65,14 +64,17 @@ export default function CreateAd() {
     setForm(f => ({ ...f, [key]: val }))
   }
 
-  // Общий метод для получения заголовков (Safari + TG)
   const getAuthHeaders = () => ({
     'x-tg-data': window.Telegram?.WebApp?.initData || '',
     'x-tg-userid': localStorage.getItem('luna_tg_userid') || ''
   })
 
+  // Шаг 2.1: Генерация текста (Headline + Body)
   async function generateAI() {
-    if (!form.productDesc) return
+    if (!form.productDesc) {
+        notify("Пожалуйста, опишите ваш продукт или услугу");
+        return;
+    }
     setGenerating(true)
     try {
       const res = await fetch(`${API}/api/generate`, {
@@ -84,7 +86,7 @@ export default function CreateAd() {
         body: JSON.stringify({ description: form.productDesc, geo: form.geo })
       })
       const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || 'AI text failed')
+      if (!res.ok) throw new Error(data?.error || 'Ошибка генерации текста')
 
       update('headline', data.headline)
       update('text', data.text)
@@ -99,22 +101,25 @@ export default function CreateAd() {
     }
   }
 
+  // Шаг 2.2: Генерация картинки (через Sharp + OpenAI)
   async function generateImageAI() {
-    if (!form.productDesc && !form.imagePrompt) return
+    if (!form.productDesc && !form.headline) {
+        notify("Заполните описание и заголовок для креатива");
+        return;
+    }
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 85000)
+    const timeoutId = setTimeout(() => controller.abort(), 90000)
 
     setGeneratingImage(true)
     try {
       const fd = new FormData()
-      fd.append('prompt', form.imagePrompt)
-      fd.append('description', form.productDesc)
-      fd.append('headline', form.headline)
+      fd.append('productDesc', form.productDesc)
+      fd.append('headline', form.headline) // Sharp возьмет этот текст!
       fd.append('text', form.text)
-      fd.append('geo', form.geo)
+      fd.append('prompt', form.imagePrompt || '')
       
-      if (form.image && form.mediaType !== 'video') {
-        fd.append('reference_image', form.image)
+      if (form.image) {
+        fd.append('imageRef', form.image) // Отправляем референс (машину)
       }
 
       const res = await fetch(`${API}/api/generate-image`, {
@@ -127,18 +132,22 @@ export default function CreateAd() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
 
-      const imgData = data.images?.[0] || data
-      if (imgData.imageBase64) {
-        const file = base64ToFile(imgData.imageBase64, imgData.mimeType || 'image/jpeg', 'ai-creative.jpg')
-        update('image', file)
-        update('imagePreview', `data:${imgData.mimeType || 'image/jpeg'};base64,${imgData.imageBase64}`)
-        update('mediaType', 'image')
-        
-        if (data.revisedPrompt) update('imagePrompt', data.revisedPrompt)
-        notify("Готово! Креатив создан.")
+      if (data.url) {
+        // Если вернулся Base64 от Sharp
+        if (data.url.startsWith('data:image')) {
+            const base64Data = data.url.split(',')[1];
+            const file = base64ToFile(base64Data, 'image/png', 'ai-creative.png');
+            update('image', file);
+            update('imagePreview', data.url);
+        } else {
+            // Если вернулась просто ссылка
+            update('imagePreview', data.url);
+        }
+        update('mediaType', 'image');
+        notify("Креатив готов!");
       }
     } catch (error) {
-      notify(error?.name === 'AbortError' ? t('create.notify.ai_image_timeout') : (error?.message || t('create.notify.ai_image_fail')))
+      notify(error?.name === 'AbortError' ? "Время ожидания истекло" : (error?.message || t('create.notify.ai_image_fail')))
     } finally {
       clearTimeout(timeoutId)
       setGeneratingImage(false)
@@ -146,11 +155,6 @@ export default function CreateAd() {
   }
 
   async function launch() {
-    if (form.ctaType === 'WHATSAPP_MESSAGE' && !form.whatsappNumber) {
-      notify(t('create.notify.whatsapp_required'))
-      return
-    }
-    
     setLaunching(true)
     try {
       const fd = new FormData()
@@ -158,12 +162,10 @@ export default function CreateAd() {
       fd.append('geo', form.geo)
       fd.append('ageMin', form.ageMin)
       fd.append('ageMax', form.ageMax)
-      fd.append('interests', JSON.stringify(form.aiInterests?.length ? form.aiInterests : form.interests ? form.interests.split(',').map(s => s.trim()).filter(Boolean) : []))
+      fd.append('interests', JSON.stringify(form.aiInterests?.length ? form.aiInterests : form.interests.split(',').map(s => s.trim()).filter(Boolean)))
       fd.append('headline', form.headline)
       fd.append('text', form.text)
       fd.append('ctaType', form.ctaType)
-      fd.append('whatsappNumber', form.whatsappNumber)
-      fd.append('ctaUrl', form.ctaUrl)
       if (form.image) fd.append('image', form.image)
 
       const res = await fetch(`${API}/api/launch`, {
@@ -173,13 +175,10 @@ export default function CreateAd() {
       })
       
       const data = await res.json()
-      if (!res.ok || !data.success) {
-        notify(data.error || t('create.notify.launch_error'))
-        return
-      }
-      notify(t('create.notify.launch_success'), () => navigate('/campaigns'))
+      if (!res.ok) throw new Error(data.error || "Ошибка запуска")
+      notify("Реклама запущена!", () => navigate('/campaigns'))
     } catch (err) {
-      notify(t('create.notify.launch_error') + ': ' + (err.message || ''))
+      notify(err.message)
     } finally {
       setLaunching(false)
     }
@@ -189,8 +188,7 @@ export default function CreateAd() {
     if (!file) return
     update('image', file)
     update('imagePreview', URL.createObjectURL(file))
-    update('mediaType', file.type?.startsWith('video/') ? 'video' : 'image')
-    update('mediaName', file.name || '')
+    update('mediaType', 'image')
   }
 
   return (
@@ -212,11 +210,9 @@ export default function CreateAd() {
         {step === 0 && (
           <div className="fade-up">
              <label>{t('create.field_budget')}</label>
-             <input className={styles.input} type="number" value={form.budget}
-                    onChange={e => update('budget', e.target.value)} placeholder="10" />
+             <input className={styles.input} type="number" value={form.budget} onChange={e => update('budget', e.target.value)} />
              <label>{t('create.field_geo')}</label>
-             <input className={styles.input} value={form.geo}
-                    onChange={e => update('geo', e.target.value)} placeholder="Astana" />
+             <input className={styles.input} value={form.geo} onChange={e => update('geo', e.target.value)} />
           </div>
         )}
 
@@ -234,44 +230,54 @@ export default function CreateAd() {
 
         {step === 2 && (
           <div className="fade-up">
-            <textarea className={styles.textarea} value={form.productDesc} 
-                      onChange={e => update('productDesc', e.target.value)} 
-                      placeholder={t('create.field_product_placeholder')} />
+            <label>О чем ваша реклама?</label>
+            <textarea className={styles.textarea} value={form.productDesc} onChange={e => update('productDesc', e.target.value)} placeholder="Например: Продажа Deepal S09 в Астане..." />
             
             <button className={styles.aiBtn} onClick={generateAI} disabled={generating}>
-              {generating ? "..." : t('create.ai_text')}
+              {generating ? "Генерация текста..." : "✨ Предложить варианты текста"}
             </button>
 
-            <div className={styles.previewZone}>
+            <div className={styles.editSection} style={{marginTop: '20px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                <label>Текст на картинке (Headline)</label>
+                <input className={styles.input} value={form.headline} onChange={e => update('headline', e.target.value)} placeholder="Заголовок для баннера" />
+                
+                <label>Текст под картинкой</label>
+                <textarea className={styles.textarea} style={{height: '60px'}} value={form.text} onChange={e => update('text', e.target.value)} />
+            </div>
+
+            <div className={styles.previewZone} style={{marginTop: '20px'}}>
                {form.imagePreview ? (
-                 <img src={form.imagePreview} className={styles.previewImg} alt="Preview" />
+                 <img src={form.imagePreview} className={styles.previewImg} alt="Preview" onClick={() => photoInputRef.current.click()} />
                ) : (
                  <div className={styles.uploadPlaceholder} onClick={() => photoInputRef.current.click()}>
-                   {t('create.creative.photo.label')}
+                   📸 Нажмите, чтобы загрузить фото-референс
                  </div>
                )}
                <input type="file" ref={photoInputRef} hidden onChange={e => handleMedia(e.target.files[0])} accept="image/*" />
             </div>
 
-            <button className={styles.aiBtn} onClick={generateImageAI} disabled={generatingImage}>
-              {generatingImage ? "AI Generation..." : "🎨 Сгенерировать картинку через ИИ"}
+            <button className={styles.aiBtn} style={{background: '#007AFF', color: 'white'}} onClick={generateImageAI} disabled={generatingImage}>
+              {generatingImage ? "AI создает шедевр..." : "🎨 Создать креатив с этим текстом"}
             </button>
           </div>
         )}
 
         {step === 3 && (
           <div className="fade-up">
-            <h3>{form.headline}</h3>
-            <p>{form.text}</p>
+            <div className={styles.finalPreview}>
+                {form.imagePreview && <img src={form.imagePreview} style={{width: '100%', borderRadius: '12px'}} />}
+                <h3>{form.headline}</h3>
+                <p>{form.text}</p>
+            </div>
             <button className={styles.launchBtn} onClick={launch} disabled={launching}>
-              {launching ? "..." : t('create.step.launch')}
+              {launching ? "Запуск..." : "🚀 Опубликовать рекламу"}
             </button>
           </div>
         )}
       </div>
 
       <div className={styles.footer}>
-        {step > 0 && <button onClick={() => setStep(s => s - 1)}>{t('common.back')}</button>}
+        {step > 0 && <button onClick={() => setStep(s => s - 1)} className={styles.backBtn}>{t('common.back')}</button>}
         {step < 3 && <button onClick={() => setStep(s => s + 1)} className={styles.nextBtn}>{t('common.next')}</button>}
       </div>
     </div>
