@@ -5,6 +5,12 @@
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",
     "formidable": "^3.5.1",
-    "sharp": "^0.33.0"
+    "sharp": "^0.33.0",
+    "openai": "^4.28.0",
+    "axios": "^1.6.7",
+    "dotenv": "^16.4.5"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
