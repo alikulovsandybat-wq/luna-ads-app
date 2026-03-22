@@ -14,6 +14,85 @@ function base64ToFile(base64, mimeType, fileName) {
   return new File([bytes], fileName, { type: mimeType })
 }
 
+// ── Наложение текста через Canvas (работает в браузере без fontconfig) ──────
+async function overlayTextOnImage(imageBase64, mimeType, headline) {
+  if (!headline || !headline.trim()) {
+    // Нет заголовка — возвращаем картинку как есть
+    return { imageBase64, mimeType }
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+
+      // Рисуем картинку
+      ctx.drawImage(img, 0, 0)
+
+      // Параметры текста
+      const text = headline.toUpperCase()
+      const maxWidth = canvas.width * 0.85
+      const fontSize = Math.round(canvas.width * 0.058)
+      ctx.font = `bold ${fontSize}px Arial, Helvetica, sans-serif`
+
+      // Разбиваем текст на строки
+      const words = text.split(' ')
+      const lines = []
+      let currentLine = ''
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word
+        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+          lines.push(currentLine)
+          currentLine = word
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (currentLine) lines.push(currentLine)
+      const maxLines = lines.slice(0, 3)
+
+      const lineHeight = fontSize * 1.25
+      const totalTextHeight = maxLines.length * lineHeight
+      const paddingV = 40
+      const gradientStartY = canvas.height - totalTextHeight - paddingV * 2 - 20
+
+      // Градиент снизу
+      const gradient = ctx.createLinearGradient(0, gradientStartY, 0, canvas.height)
+      gradient.addColorStop(0, 'rgba(0,0,0,0)')
+      gradient.addColorStop(1, 'rgba(0,0,0,0.70)')
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, gradientStartY, canvas.width, canvas.height - gradientStartY)
+
+      // Рисуем текст
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      maxLines.forEach((line, i) => {
+        const y = canvas.height - totalTextHeight - paddingV + i * lineHeight + lineHeight / 2
+
+        // Чёрная обводка
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)'
+        ctx.lineWidth = fontSize * 0.08
+        ctx.lineJoin = 'round'
+        ctx.strokeText(line, canvas.width / 2, y)
+
+        // Белый текст
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(line, canvas.width / 2, y)
+      })
+
+      // Экспортируем как base64
+      const resultBase64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1]
+      resolve({ imageBase64: resultBase64, mimeType: 'image/jpeg' })
+    }
+    img.onerror = () => resolve({ imageBase64, mimeType }) // fallback
+    img.src = `data:${mimeType};base64,${imageBase64}`
+  })
+}
+
 function notify(message, callback) {
   if (window.Telegram?.WebApp?.showAlert) {
     window.Telegram.WebApp.showAlert(message, callback)
@@ -107,7 +186,7 @@ function ImageCarousel({ images, selectedIndex, onSelect }) {
         <img
           src={images[current]}
           alt={`Вариант ${current + 1}`}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
         {/* Метка "Выбрано" */}
         <div style={{
@@ -289,8 +368,19 @@ export default function CreateAd() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
 
-      const file = base64ToFile(data.imageBase64, data.mimeType || 'image/png', 'ai-creative.png')
-      const previewUrl = `data:${data.mimeType || 'image/png'};base64,${data.imageBase64}`
+      // Получаем чистую картинку от бэкенда
+      const rawBase64 = data.imageBase64
+      const rawMime = data.mimeType || 'image/jpeg'
+
+      // Накладываем текст через Canvas на фронте
+      const { imageBase64, mimeType: finalMime } = await overlayTextOnImage(
+        rawBase64,
+        rawMime,
+        form.headline
+      )
+
+      const file = base64ToFile(imageBase64, finalMime, 'ai-creative.jpg')
+      const previewUrl = `data:${finalMime};base64,${imageBase64}`
 
       // Добавляем к существующим (макс 3)
       setGeneratedImages(prev => {
