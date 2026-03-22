@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-// Твой оригинальный BarChart (без внешних библиотек)
+// Inline BarChart (No external deps)
 function BarChart({ data, dataKey, color = '#7c5cfc', height = 80 }) {
   if (!data || data.length === 0) return null
   const max = Math.max(...data.map(d => d[dataKey] || 0), 1)
@@ -80,30 +80,45 @@ export default function Dashboard() {
 
   async function fetchStats() {
     setLoading(true)
+    setError('')
     try {
       const tgData = window.Telegram?.WebApp?.initData || ''
-      // Добавляем заголовок авторизации, который используется в CreateAd.jsx
+      const userId = localStorage.getItem('luna_tg_userid') || ''
+      
+      console.log('Fetching stats from:', `${API}/api/stats`)
+
       const res = await fetch(`${API}/api/stats?days=${period}`, {
         headers: { 
           'x-tg-data': tgData,
-          'x-tg-userid': localStorage.getItem('luna_tg_userid') || ''
+          'x-tg-userid': userId
         }
       })
+
+      if (!res.ok) {
+        const errorText = await res.text()
+        console.error('API Error:', res.status, errorText)
+        throw new Error(`Server responded with ${res.status}`)
+      }
+
       const data = await res.json()
-      if (!res.ok || data?.error) {
+      
+      if (data?.error) {
+        console.warn('Stats data error:', data.error)
         setStats(fallbackStats)
         setError(t('dashboard.no_data'))
       } else {
         setStats(data)
-        setError('')
       }
-    } catch {
+    } catch (err) {
+      console.error('Fetch failed:', err)
       setStats(fallbackStats)
       setError(t('dashboard.no_data'))
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }
 
+  // Данные для рендеринга
   const currency = stats?.currency || '$'
   const spend = stats?.spend ?? '0.00'
   const leads = stats?.leads ?? 0
@@ -115,14 +130,14 @@ export default function Dashboard() {
   const platforms = stats?.platforms || []
   const totalImpressions = platforms.reduce((s, p) => s + p.impressions, 0)
 
-  const METRICS = stats ? [
+  const METRICS = [
     { label: t('dashboard.metric.spend'), value: `${currency}${spend}`, icon: '💸', color: '#ef4444', key: 'spend' },
     { label: t('dashboard.metric.impressions'), value: impressions, icon: '👁', color: '#f59e0b', key: 'impressions' },
     { label: 'Охват', value: reach, icon: '📡', color: '#7c5cfc', key: 'reach' },
     { label: 'Клики', value: clicks, icon: '🖱', color: '#22c55e', key: 'clicks' },
     { label: t('dashboard.metric.leads'), value: leads, icon: '💬', color: '#06b6d4', key: 'leads' },
     { label: t('dashboard.metric.cpl'), value: `${currency}${cpl}`, icon: '🎯', color: '#ec4899', key: 'cpl' },
-  ] : []
+  ]
 
   const chartMetrics = [
     { key: 'impressions', label: 'Показы', color: '#f59e0b' },
@@ -168,81 +183,47 @@ export default function Dashboard() {
       </div>
 
       {!loading && error && (
-        <div style={{ marginTop: 8, color: 'var(--text2)', fontSize: 12 }}>{error}</div>
+        <div style={{ marginTop: 12, padding: 12, background: 'rgba(255,255,255,0.05)', borderRadius: 8, color: 'var(--text2)', fontSize: 12 }}>
+          ⚠️ {error}
+        </div>
       )}
 
       {!loading && daily.length > 0 && (
-        <div style={{
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-          borderRadius: 16, padding: '16px', marginTop: 16
-        }}>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '16px', marginTop: 16 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
-            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>
-              📈 Динамика за {period} дней
-            </div>
+            <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>📈 Динамика</div>
             <div style={{ display: 'flex', gap: 6 }}>
               {chartMetrics.map(m => (
                 <button
                   key={m.key}
                   onClick={() => setChartMetric(m.key)}
                   style={{
-                    fontSize: 10, padding: '3px 8px', borderRadius: 20, border: 'none', cursor: 'pointer',
+                    fontSize: 10, padding: '3px 8px', borderRadius: 20, border: 'none', 
                     background: chartMetric === m.key ? m.color : 'rgba(255,255,255,0.07)',
                     color: chartMetric === m.key ? '#000' : 'var(--text2)',
-                    fontWeight: chartMetric === m.key ? 700 : 400,
-                    transition: 'all 0.2s'
+                    fontWeight: 700, cursor: 'pointer'
                   }}
-                >
-                  {m.label}
-                </button>
+                >{m.label}</button>
               ))}
             </div>
           </div>
           <BarChart data={daily} dataKey={activeChart.key} color={activeChart.color} height={80} />
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{daily[0]?.date?.slice(5)}</span>
-            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{daily[Math.floor(daily.length / 2)]?.date?.slice(5)}</span>
-            <span style={{ fontSize: 10, color: 'var(--text3)' }}>{daily[daily.length - 1]?.date?.slice(5)}</span>
-          </div>
         </div>
       )}
 
       {!loading && platforms.length > 0 && (
-        <div style={{
-          background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
-          borderRadius: 16, padding: '16px', marginTop: 12
-        }}>
-          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>
-            📊 Площадки
-          </div>
+        <div style={{ background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 16, padding: '16px', marginTop: 12 }}>
+          <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 14 }}>📊 Площадки</div>
           {platforms.map((p, i) => (
-            <PlatformRow
-              key={i}
-              platform={p.platform}
-              impressions={p.impressions}
-              reach={p.reach}
-              spend={p.spend}
-              total={totalImpressions}
-            />
+            <PlatformRow key={i} platform={p.platform} impressions={p.impressions} reach={p.reach} spend={p.spend} total={totalImpressions} />
           ))}
         </div>
       )}
 
-      <div className={`${styles.autopilot} fade-up-3`}>
-        <div className={styles.autopilotTop}>
-          <div>
-            <div className={styles.autopilotTitle}>{t('dashboard.autopilot.title')}</div>
-            <div className={styles.autopilotSub}>{t('dashboard.autopilot.sub')}</div>
-          </div>
-          <div className={styles.toggle} />
-        </div>
-      </div>
-
-      <div className={`${styles.btnWrap} fade-up-4`}>
+      <div className={`${styles.btnWrap} fade-up-4`} style={{ marginTop: 20 }}>
         <button className={styles.launchBtn} onClick={() => navigate('/create')}>
           {t('dashboard.launch')}
         </button>
-        <div className={styles.hint}>{t('dashboard.hint')}</div>
       </div>
     </div>
   )
