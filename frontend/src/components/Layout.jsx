@@ -1,12 +1,12 @@
-﻿import { Outlet, useLocation, useNavigate } from 'react-router-dom'
+import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import styles from './Layout.module.css'
 import { useI18n } from '../i18n'
-import LanguageSwitcher from './LanguageSwitcher'
 
 const NAV = [
-  { path: '/', icon: '◈', labelKey: 'nav.home' },
+  { path: '/',          icon: '◈', labelKey: 'nav.home' },
   { path: '/campaigns', icon: '◉', labelKey: 'nav.campaigns' },
-  { path: '/create', icon: '＋', labelKey: 'nav.create' }
+  { path: '/create',    icon: '＋', labelKey: 'nav.create' },
+  { path: '/profile',   icon: '👤', labelKey: 'nav.profile' },
 ]
 
 export default function Layout() {
@@ -17,7 +17,6 @@ export default function Layout() {
   return (
     <div className={styles.root}>
       <main className={styles.main}>
-        <LanguageSwitcher />
         <Outlet />
       </main>
       <nav className={styles.nav}>
