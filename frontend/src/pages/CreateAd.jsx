@@ -107,7 +107,7 @@ function ImageCarousel({ images, selectedIndex, onSelect }) {
         <img
           src={images[current]}
           alt={`Вариант ${current + 1}`}
-          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
         />
         {/* Метка "Выбрано" */}
         <div style={{
