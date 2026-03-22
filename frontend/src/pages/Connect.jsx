@@ -1,4 +1,4 @@
-﻿import { useEffect } from 'react'
+import { useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styles from './Connect.module.css'
 import { useI18n } from '../i18n'
@@ -42,20 +42,28 @@ export default function Connect({ onConnect }) {
 
   return (
     <div className={styles.page}>
-      <LanguageSwitcher />
+      {/* Обернули LanguageSwitcher в langWrapper, чтобы он улетел в угол */}
+      <div className={styles.langWrapper}>
+        <LanguageSwitcher className={styles.langSelect} />
+      </div>
+
       <div className={styles.inner}>
         <div className={styles.logo}>🌙</div>
         <h1 className={styles.title}>Luna Ads</h1>
         <p className={styles.sub}>{t('connect.subtitle')}</p>
 
         <div className={styles.features}>
-          {features.map(feature => (
-            <div key={feature} className={styles.feature}>{feature}</div>
+          {features.map((feature, index) => (
+            <div key={index} className={styles.feature}>
+              {/* Можно добавить иконку-галочку для элитности */}
+              <span style={{color: 'var(--green)'}}>✓</span> {feature}
+            </div>
           ))}
         </div>
 
         <button className={styles.connectBtn} onClick={connectFacebook}>
-          <span>f</span> {t('connect.button')}
+          {/* Убрали просто "f", добавим жирный стиль тексту */}
+          {t('connect.button')}
         </button>
 
         <p className={styles.hint}>{t('connect.hint')}</p>
