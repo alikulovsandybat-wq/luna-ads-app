@@ -1,4 +1,3 @@
-﻿// api/generate.js
 import { createClient } from '@supabase/supabase-js'
 import { getTgUserId, requireSubscription } from './_subscription.js'
 
@@ -15,7 +14,7 @@ function extractJson(text) {
   return JSON.parse(match[0])
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 20000) {
+async function fetchWithTimeout(url, options, timeoutMs = 25000) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
   try {
@@ -45,35 +44,30 @@ export default async function handler(req, res) {
     if (!description) return res.status(400).json({ error: 'No description' })
 
     if (!process.env.OPENAI_API_KEY) {
-      return res.status(500).json({ error: 'OPENAI_API_KEY is missing in Vercel' })
+      return res.status(500).json({ error: 'OPENAI_API_KEY is missing' })
     }
 
-    const prompt = `Ты senior performance-маркетолог по Facebook Ads.
+    // ОБНОВЛЕННЫЙ ПРОМПТ: Твой "зубастый" и элитный стиль
+    const prompt = `Ты — топовый креативный директор и эксперт по рекламе. Твоя задача — создать текст для рекламы в Instagram/Facebook.
 
-Сгенерируй рекламный вариант и таргетинг по интересам для объявления.
+ДАННЫЕ:
+- Продукт: ${description}
+- Локация: ${geo || 'Казахстан'}
 
-Данные:
-- Продукт или услуга: ${description}
-- Гео: ${geo || 'Казахстан'}
+ТВОЙ СТИЛЬ:
+- Элитный, чистый, "человечный" язык. 
+- Никакого "рекламного пластика" и заезженных фраз типа "лучшее предложение".
+- Пиши коротко, емко, "зубасто" и по делу.
 
-Требования к тексту:
-- headline: до 40 символов
-- text: 2-3 коротких предложения
-- язык: русский
-- стиль: живой, конкретный, без воды
-- добавь 1-2 уместных эмодзи
-- не используй markdown
+ЗАДАЧА:
+1. headline: Короткий цепляющий заголовок до 40 символов. Это то, что Sharp наложит на картинку.
+2. text: Основной текст поста (2-3 предложения), который бьет в боль или выгоду клиента.
+3. interests: 5-8 точных интересов для таргета на английском языке.
 
-Требования к интересам (interests):
-- 5-8 интересов на английском языке (Facebook использует английские названия интересов)
-- интересы должны быть релевантны продукту
-- используй реальные Facebook interest names (например: "Online shopping", "Fitness", "Cooking")
-- верни как массив строк
+Верни только чистый JSON:
+{"headline":"...","text":"...","interests":["..."]}`
 
-Верни только чистый JSON без пояснений:
-{"headline":"...","text":"...","interests":["interest1","interest2","interest3"]}`
-
-    const model = process.env.OPENAI_TEXT_MODEL || 'gpt-4o-mini'
+    const model = process.env.OPENAI_TEXT_MODEL || 'gpt-4o' // Используем мощную модель для качества
     const aiRes = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -82,42 +76,30 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model,
-        temperature: 0.8,
-        max_tokens: 500,
+        temperature: 0.7,
+        max_tokens: 600,
         response_format: { type: 'json_object' },
         messages: [
-          { role: 'system', content: 'You are a helpful assistant. Respond with JSON only.' },
+          { role: 'system', content: 'You are a professional ad copywriter. Respond with JSON only.' },
           { role: 'user', content: prompt }
         ]
       })
-    }, 20000)
+    }, 25000)
 
     const aiData = await aiRes.json()
-    if (!aiRes.ok) {
-      return res.status(500).json({
-        error: aiData?.error?.message || 'OpenAI request failed',
-        details: aiData
-      })
-    }
+    if (!aiRes.ok) throw new Error(aiData?.error?.message || 'OpenAI Error')
 
-    const text = aiData.choices?.[0]?.message?.content || ''
-    const parsed = extractJson(text)
-
-    if (!parsed.headline || !parsed.text) {
-      return res.status(500).json({ error: 'AI returned incomplete result', raw: text })
-    }
+    const content = aiData.choices?.[0]?.message?.content || ''
+    const parsed = extractJson(content)
 
     return res.json({
-      headline: parsed.headline.trim(),
-      text: parsed.text.trim(),
+      headline: (parsed.headline || '').trim(),
+      text: (parsed.text || '').trim(),
       interests: Array.isArray(parsed.interests) ? parsed.interests : []
     })
+
   } catch (e) {
     console.error(e)
-    if (e.name === 'AbortError') {
-      return res.status(504).json({ error: 'AI generation timed out after 20 seconds' })
-    }
     return res.status(500).json({ error: e.message || 'Generation error' })
   }
 }
-  
