@@ -5,7 +5,7 @@ import { useI18n } from '../i18n'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-// Simple inline bar chart — no external deps needed
+// Твой оригинальный BarChart (без внешних библиотек)
 function BarChart({ data, dataKey, color = '#7c5cfc', height = 80 }) {
   if (!data || data.length === 0) return null
   const max = Math.max(...data.map(d => d[dataKey] || 0), 1)
@@ -34,7 +34,6 @@ function BarChart({ data, dataKey, color = '#7c5cfc', height = 80 }) {
   )
 }
 
-// Platform row with progress bar
 function PlatformRow({ platform, impressions, reach, spend, total }) {
   const pct = total > 0 ? Math.round((impressions / total) * 100) : 0
   const icon = platform === 'Facebook' ? '📘' : platform === 'Instagram' ? '📸' : platform === 'Messenger' ? '💬' : '🌐'
@@ -83,8 +82,12 @@ export default function Dashboard() {
     setLoading(true)
     try {
       const tgData = window.Telegram?.WebApp?.initData || ''
+      // Добавляем заголовок авторизации, который используется в CreateAd.jsx
       const res = await fetch(`${API}/api/stats?days=${period}`, {
-        headers: { 'x-tg-data': tgData }
+        headers: { 
+          'x-tg-data': tgData,
+          'x-tg-userid': localStorage.getItem('luna_tg_userid') || ''
+        }
       })
       const data = await res.json()
       if (!res.ok || data?.error) {
@@ -147,7 +150,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* METRICS GRID */}
       <div className={styles.grid}>
         {loading
           ? Array(6).fill(0).map((_, i) => (
@@ -169,7 +171,6 @@ export default function Dashboard() {
         <div style={{ marginTop: 8, color: 'var(--text2)', fontSize: 12 }}>{error}</div>
       )}
 
-      {/* CHART */}
       {!loading && daily.length > 0 && (
         <div style={{
           background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
@@ -198,7 +199,6 @@ export default function Dashboard() {
             </div>
           </div>
           <BarChart data={daily} dataKey={activeChart.key} color={activeChart.color} height={80} />
-          {/* X-axis labels: show first, middle, last */}
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
             <span style={{ fontSize: 10, color: 'var(--text3)' }}>{daily[0]?.date?.slice(5)}</span>
             <span style={{ fontSize: 10, color: 'var(--text3)' }}>{daily[Math.floor(daily.length / 2)]?.date?.slice(5)}</span>
@@ -207,7 +207,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* PLATFORM BREAKDOWN */}
       {!loading && platforms.length > 0 && (
         <div style={{
           background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
@@ -229,7 +228,6 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* AUTOPILOT */}
       <div className={`${styles.autopilot} fade-up-3`}>
         <div className={styles.autopilotTop}>
           <div>
@@ -240,7 +238,6 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* LAUNCH BUTTON */}
       <div className={`${styles.btnWrap} fade-up-4`}>
         <button className={styles.launchBtn} onClick={() => navigate('/create')}>
           {t('dashboard.launch')}
