@@ -1,80 +1,183 @@
-import { OpenAI } from 'openai';
-import { getTgUserId, requireSubscription } from './_subscription.js';
-import { createClient } from '@supabase/supabase-js';
-import sharp from 'sharp'; // Убедись, что sharp установлен в package.json
+// api/generate-image.js
+import { OpenAI } from 'openai'
+import { getTgUserId, requireSubscription } from './_subscription.js'
+import { createClient } from '@supabase/supabase-js'
+import { IncomingForm } from 'formidable'
+import fs from 'fs'
+import sharp from 'sharp'
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+export const config = { api: { bodyParser: false } }
+
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
+
+function parseForm(req) {
+  return new Promise((resolve, reject) => {
+    const form = new IncomingForm({ multiples: false })
+    form.parse(req, (err, fields, files) => {
+      if (err) reject(err)
+      else resolve({ fields, files })
+    })
+  })
+}
+
+// Безопасно экранируем текст для SVG
+function escapeSvg(str) {
+  if (!str) return ''
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+}
+
+// Разбиваем длинный текст на строки
+function wrapText(text, maxLen = 22) {
+  const words = text.split(' ')
+  const lines = []
+  let current = ''
+  for (const word of words) {
+    if ((current + ' ' + word).trim().length > maxLen) {
+      if (current) lines.push(current.trim())
+      current = word
+    } else {
+      current = (current + ' ' + word).trim()
+    }
+  }
+  if (current) lines.push(current.trim())
+  return lines.slice(0, 3) // максимум 3 строки
+}
 
 export default async function handler(req, res) {
-  if (req.method !== 'POST') return res.status(405).send('Method not allowed');
-
-  const userId = getTgUserId(req);
-  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
+  if (req.method === 'OPTIONS') return res.status(200).end()
+  if (req.method !== 'POST') return res.status(405).send('Method not allowed')
 
   try {
-    const { data: user } = await supabase.from('users').select('*').eq('tg_userid', userId).single();
-    if (!requireSubscription(user, res)) return;
+    const tgUserId = getTgUserId(req)
+    if (!tgUserId) return res.status(401).json({ error: 'Unauthorized' })
 
-    // ВАЖНО: productDesc и headline — это наши УТП из скриншота
-    const { headline, productDesc, prompt, ctaText } = req.body;
+    // Проверяем подписку
+    const { data: user } = await supabase
+      .from('users')
+      .select('subscription_active, subscription_until')
+      .eq('tg_user_id', tgUserId)
+      .single()
 
-    // 1. Генерируем "чистую" картинку (без текста, чтобы он не был кривым)
-    // ИИ должен создать только "элитный" фон и объект
-    const finalPrompt = prompt || `Premium lifestyle photography for ${productDesc}. High-end lighting, minimalist style, no text.`;
-    const aiResponse = await openai.images.generate({
-      model: "dall-e-3",
-      prompt: finalPrompt,
-      n: 1,
-      size: "1024x1024",
-    });
+    if (!requireSubscription(user, res)) return
 
-    // 2. ЗАГРУЖАЕМ КАРТИНКУ В БУФЕР (как в оригинале)
-    const rawImageUrl = aiResponse.data[0].url;
-    const imageResponse = await fetch(rawImageUrl);
-    const bgBuffer = Buffer.from(await imageResponse.arrayBuffer());
+    // Парсим multipart форму
+    const { fields, files } = await parseForm(req)
 
-    // 3. СОЗДАЕМ SVG ОВЕРЛЕЙ (с текстом и дизайном)
-    // Мы используем sans-serif для совместимости с Serverless средой (Linux)
+    const headline = fields.headline?.[0] || fields.headline || ''
+    const description = fields.description?.[0] || fields.description || fields.productDesc?.[0] || ''
+    const promptText = fields.prompt?.[0] || fields.prompt || ''
+    const referenceImage = files.reference_image?.[0] || files.reference_image
+
+    // Строим промпт для DALL-E
+    const finalPrompt = promptText
+      ? `${promptText}. Premium commercial photography, no text, no logos, clean composition.`
+      : `Professional advertisement photo for: ${description}. Premium lifestyle, high-end lighting, minimalist style, no text, no logos.`
+
+    let bgBuffer
+
+    if (referenceImage) {
+      // Есть референс — используем DALL-E 2 edit
+      const imageBuffer = fs.readFileSync(referenceImage.filepath)
+
+      // Конвертируем в PNG и делаем квадратным для DALL-E
+      const pngBuffer = await sharp(imageBuffer)
+        .resize(1024, 1024, { fit: 'cover' })
+        .png()
+        .toBuffer()
+
+      const formData = new FormData()
+      formData.append('model', 'dall-e-2')
+      formData.append('prompt', finalPrompt)
+      formData.append('n', '1')
+      formData.append('size', '1024x1024')
+      formData.append('response_format', 'b64_json')
+      formData.append('image', new Blob([pngBuffer], { type: 'image/png' }), 'ref.png')
+
+      const editRes = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: formData
+      })
+      const editData = await editRes.json()
+      const b64 = editData?.data?.[0]?.b64_json
+      if (!b64) throw new Error(editData?.error?.message || 'DALL-E edit failed')
+      bgBuffer = Buffer.from(b64, 'base64')
+
+    } else {
+      // Нет референса — генерируем с нуля через DALL-E 3
+      const aiResponse = await openai.images.generate({
+        model: 'dall-e-3',
+        prompt: finalPrompt,
+        n: 1,
+        size: '1024x1024',
+        response_format: 'b64_json'
+      })
+      const b64 = aiResponse.data?.[0]?.b64_json
+      if (!b64) throw new Error('DALL-E generation failed')
+      bgBuffer = Buffer.from(b64, 'base64')
+    }
+
+    // Строим SVG оверлей с текстом
+    const headlineLines = headline ? wrapText(headline.toUpperCase(), 20) : []
+    const lineHeight = 72
+    const textBlockHeight = headlineLines.length * lineHeight
+    const textY = 1024 - 80 - textBlockHeight
+
+    const headlineSvg = headlineLines.map((line, i) => `
+      <text
+        x="512"
+        y="${textY + i * lineHeight}"
+        font-family="Arial, sans-serif"
+        font-size="58"
+        font-weight="bold"
+        fill="white"
+        text-anchor="middle"
+        filter="url(#shadow)"
+      >${escapeSvg(line)}</text>
+    `).join('')
+
     const svgOverlay = Buffer.from(`
-      <svg width="1024" height="1024">
-        <rect x="0" y="800" width="1024" height="224" fill="url(#grad)" />
+      <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
             <stop offset="0%" style="stop-color:rgb(0,0,0);stop-opacity:0" />
-            <stop offset="100%" style="stop-color:rgb(0,0,0);stop-opacity:0.6" />
+            <stop offset="100%" style="stop-color:rgb(0,0,0);stop-opacity:0.65" />
           </linearGradient>
+          <filter id="shadow">
+            <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.8"/>
+          </filter>
         </defs>
-        
-        <text x="512" y="920" font-family="sans-serif" font-size="64" font-weight="bold" fill="white" text-anchor="middle">
-          ${headline ? headline.toUpperCase() : ''}
-        </text>
 
-        ${ctaText ? `
-          <rect x="312" y="960" width="400" height="40" rx="20" fill="#7c5cfc" />
-          <text x="512" y="985" font-family="sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">
-            ${ctaText.toUpperCase()}
-          </text>
+        ${headlineLines.length > 0 ? `
+          <rect x="0" y="${textY - 40}" width="1024" height="${textBlockHeight + 120}"
+            fill="url(#grad)" />
+          ${headlineSvg}
         ` : ''}
       </svg>
-    `);
+    `)
 
-    // 4. СБОРКА ЧЕРЕЗ SHARP (тот самый код, который я вернула)
+    // Собираем финальную картинку через Sharp
     const finalBuffer = await sharp(bgBuffer)
+      .resize(1024, 1024, { fit: 'cover' })
       .composite([{ input: svgOverlay, top: 0, left: 0 }])
-      .jpeg({ quality: 95 })
-      .toBuffer();
+      .jpeg({ quality: 92 })
+      .toBuffer()
 
-    // Конвертируем в Base64 для моментального отображения на фронте
-    const base64Image = `data:image/png;base64,${finalBuffer.toString('base64')}`;
+    const imageBase64 = finalBuffer.toString('base64')
 
-    // Логируем
-    await supabase.from('ai_logs').insert({ user_id: user.id, type: 'pro_sharp_gen' });
-
-    res.status(200).json({ url: base64Image });
+    res.status(200).json({
+      imageBase64,
+      mimeType: 'image/jpeg',
+      mode: referenceImage ? 'edit' : 'generate'
+    })
 
   } catch (error) {
-    console.error('Sharp processing error:', error);
-    return res.status(500).json({ error: 'Failed to assemble creative' });
+    console.error('generate-image error:', error)
+    res.status(500).json({ error: error.message || 'Failed to generate image' })
   }
 }
