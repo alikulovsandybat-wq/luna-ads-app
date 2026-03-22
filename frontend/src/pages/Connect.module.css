@@ -4,8 +4,33 @@
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: radial-gradient(ellipse at 50% 0%, rgba(75, 123, 255, 0.16) 0%, transparent 60%), var(--bg);
+  background: var(--bg); /* Чистый фон без лишних градиентов для элитного вида */
+  position: relative; /* Нужно для позиционирования языка */
 }
+
+/* --- НОВЫЙ БЛОК ДЛЯ ЯЗЫКА --- */
+.langWrapper {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+  z-index: 100;
+  animation: fadeUp 0.5s ease both;
+}
+
+.langSelect {
+  appearance: none;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text2);
+  cursor: pointer;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.04);
+  outline: none;
+}
+/* ---------------------------- */
 
 .inner {
   text-align: center;
@@ -14,97 +39,97 @@
 }
 
 .logo {
-  font-size: 56px;
-  margin-bottom: 12px;
+  font-size: 64px;
+  margin-bottom: 16px;
   animation: fadeUp 0.5s ease both;
 }
 
 .title {
   font-family: var(--font-display);
-  font-size: 28px;
-  font-weight: 700;
-  background: linear-gradient(135deg, #4b7bff, #6f63ff);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  margin-bottom: 8px;
+  font-size: 32px;
+  font-weight: 800;
+  color: var(--text); /* Убираем градиент из заголовка для чистоты стиля */
+  margin-bottom: 12px;
   animation: fadeUp 0.5s 0.1s ease both;
+  letter-spacing: -0.5px;
 }
 
 .sub {
   color: var(--text2);
-  font-size: 14px;
+  font-size: 15px;
   margin-bottom: 32px;
-  line-height: 1.5;
+  line-height: 1.6;
   animation: fadeUp 0.5s 0.15s ease both;
 }
 
 .features {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 32px;
   animation: fadeUp 0.5s 0.2s ease both;
 }
 
+/* Карточки фичей как на референсе */
 .feature {
   background: var(--card);
   border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  padding: 12px 16px;
-  font-size: 14px;
+  border-radius: 14px;
+  padding: 16px;
+  font-size: 15px;
+  font-weight: 500;
   text-align: left;
-  color: var(--text2);
-  box-shadow: 0 10px 22px rgba(15, 23, 42, 0.06);
+  color: var(--text);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .connectBtn {
   width: 100%;
-  padding: 16px;
-  background: #1877f2;
-  border-radius: var(--radius);
+  padding: 18px;
+  background: #007AFF; /* Чистый синий Apple */
+  border-radius: 16px;
   color: white;
-  font-size: 16px;
+  font-size: 17px;
   font-weight: 700;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  box-shadow: 0 8px 24px rgba(24,119,242,0.3);
+  gap: 12px;
+  margin-bottom: 16px;
+  box-shadow: 0 10px 20px rgba(0, 122, 255, 0.2);
   animation: fadeUp 0.5s 0.25s ease both;
-  transition: transform 0.15s;
-}
-
-.connectBtn span {
-  font-size: 20px;
-  font-weight: 900;
+  transition: all 0.2s;
 }
 
 .connectBtn:active {
-  transform: scale(0.97);
+  transform: scale(0.96);
 }
 
 .hint {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text3);
+  line-height: 1.4;
   animation: fadeUp 0.5s 0.3s ease both;
 }
 
 .legalLinks {
-  margin-top: 18px;
+  margin-top: 24px;
   display: flex;
   justify-content: center;
-  gap: 14px;
-  flex-wrap: wrap;
+  gap: 16px;
   animation: fadeUp 0.5s 0.35s ease both;
 }
 
 .legalLinks a {
-  color: var(--accent2);
+  color: var(--text3);
   font-size: 12px;
   text-decoration: none;
+  font-weight: 500;
 }
 
 .legalLinks a:hover {
-  text-decoration: underline;
+  color: var(--accent);
 }
