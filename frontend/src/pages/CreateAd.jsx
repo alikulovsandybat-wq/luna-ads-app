@@ -8,11 +8,9 @@ const API = import.meta.env.VITE_API_URL || ''
 function base64ToFile(base64, mimeType, fileName) {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
-
   for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i)
   }
-
   return new File([bytes], fileName, { type: mimeType })
 }
 
@@ -21,7 +19,6 @@ function notify(message, callback) {
     window.Telegram.WebApp.showAlert(message, callback)
     return
   }
-
   window.alert(message)
   callback?.()
 }
@@ -35,6 +32,9 @@ export default function CreateAd() {
   const [generating, setGenerating] = useState(false)
   const [generatingImage, setGeneratingImage] = useState(false)
   const [launching, setLaunching] = useState(false)
+  
+  // Новое состояние для 3-х вариантов картинок
+  const [aiImages, setAiImages] = useState([])
 
   const steps = [
     t('create.step.budget_geo'),
@@ -82,12 +82,19 @@ export default function CreateAd() {
     setForm(f => ({ ...f, [key]: val }))
   }
 
+  // Функция выбора варианта из карусели
+  function selectVariant(imgObj, index) {
+    const file = base64ToFile(imgObj.imageBase64, imgObj.mimeType || 'image/png', `ai-variant-${index}.png`)
+    update('image', file)
+    update('imagePreview', `data:${imgObj.mimeType || 'image/png'};base64,${imgObj.imageBase64}`)
+    update('mediaType', 'image')
+    update('mediaName', `ai-variant-${index}.png`)
+  }
+
   async function generateAI() {
     if (!form.productDesc) return
-
     const controller = new AbortController()
     const timeoutId = setTimeout(() => controller.abort(), 25000)
-
     setGenerating(true)
     try {
       const tgData = window.Telegram?.WebApp?.initData || ''
@@ -98,10 +105,7 @@ export default function CreateAd() {
         signal: controller.signal
       })
       const data = await res.json()
-
-      if (!res.ok) {
-        throw new Error(data?.error || 'AI generation failed')
-      }
+      if (!res.ok) throw new Error(data?.error || 'AI generation failed')
 
       update('headline', data.headline)
       update('text', data.text)
@@ -110,10 +114,7 @@ export default function CreateAd() {
         update('interests', data.interests.join(', '))
       }
     } catch (error) {
-      const message = error?.name === 'AbortError'
-        ? t('create.notify.ai_text_timeout')
-        : (error?.message || t('create.notify.ai_text_fail'))
-      notify(message)
+      notify(error?.name === 'AbortError' ? t('create.notify.ai_text_timeout') : (error?.message || t('create.notify.ai_text_fail')))
     } finally {
       clearTimeout(timeoutId)
       setGenerating(false)
@@ -122,9 +123,8 @@ export default function CreateAd() {
 
   async function generateImageAI() {
     if (!form.productDesc && !form.imagePrompt) return
-
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 70000)
+    const timeoutId = setTimeout(() => controller.abort(), 95000) // Увеличенный таймаут для 3-х картинок
 
     setGeneratingImage(true)
     try {
@@ -135,6 +135,7 @@ export default function CreateAd() {
       fd.append('headline', form.headline)
       fd.append('text', form.text)
       fd.append('geo', form.geo)
+      fd.append('n', '3') // Просим 3 варианта
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
 
       const res = await fetch(`${API}/api/generate-image`, {
@@ -145,27 +146,24 @@ export default function CreateAd() {
       })
 
       const data = await res.json()
-      if (!res.ok) {
-        throw new Error(data?.error || t('create.notify.ai_image_fail'))
+      if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
+
+      // Работаем с массивом картинок
+      if (data.images && data.images.length > 0) {
+        setAiImages(data.images)
+        // Автоматически выбираем первую как активную
+        selectVariant(data.images[0], 0)
+      } else if (data.imageBase64) {
+        // Фоллбек на старый формат, если бэкенд еще не обновлен
+        const singleImg = { imageBase64: data.imageBase64, mimeType: data.mimeType }
+        setAiImages([singleImg])
+        selectVariant(singleImg, 0)
       }
 
-      const file = base64ToFile(data.imageBase64, data.mimeType || 'image/png', 'ai-creative.png')
-      update('image', file)
-      update('imagePreview', `data:${data.mimeType || 'image/png'};base64,${data.imageBase64}`)
-      update('mediaType', 'image')
-      update('mediaName', 'ai-creative.png')
       if (!form.imagePrompt && data.revisedPrompt) update('imagePrompt', data.revisedPrompt)
-
-      notify(
-        data.mode === 'edit'
-          ? t('create.notify.ai_image_edit_done')
-          : t('create.notify.ai_image_new_done')
-      )
+      notify("Варианты созданы! Выберите лучший для вашей рекламы.")
     } catch (error) {
-      const message = error?.name === 'AbortError'
-        ? t('create.notify.ai_image_timeout')
-        : (error?.message || t('create.notify.ai_image_fail'))
-      notify(message)
+      notify(error?.name === 'AbortError' ? t('create.notify.ai_image_timeout') : (error?.message || t('create.notify.ai_image_fail')))
     } finally {
       clearTimeout(timeoutId)
       setGeneratingImage(false)
@@ -174,6 +172,7 @@ export default function CreateAd() {
 
   function handleMedia(file) {
     if (!file) return
+    setAiImages([]) // Сбрасываем ИИ картинки, если юзер загрузил своё
     update('image', file)
     update('imagePreview', URL.createObjectURL(file))
     update('mediaType', file.type?.startsWith('video/') ? 'video' : 'image')
@@ -196,12 +195,10 @@ export default function CreateAd() {
       notify(t('create.notify.whatsapp_required'))
       return
     }
-
     if ((form.ctaType === 'TELEGRAM' || form.ctaType === 'LEARN_MORE') && !form.ctaUrl) {
       notify('Укажите ссылку')
       return
     }
-
     if (form.creativeType === 'video' || form.creativeType === 'reels') {
       notify(t('create.notify.video_block'))
       return
@@ -228,14 +225,11 @@ export default function CreateAd() {
         headers: { 'x-tg-data': tgData },
         body: fd
       })
-
       const data = await res.json()
-
       if (!res.ok || !data.success) {
         notify(data.error || t('create.notify.launch_error'))
         return
       }
-
       notify(t('create.notify.launch_success'), () => navigate('/campaigns'))
     } catch (err) {
       notify(t('create.notify.launch_error') + ': ' + (err.message || ''))
@@ -311,218 +305,4 @@ export default function CreateAd() {
                 background: 'rgba(124,92,252,0.08)', border: '1px solid rgba(124,92,252,0.25)',
                 borderRadius: 12, padding: '10px 14px', marginBottom: 16
               }}>
-                <div style={{ fontSize: 11, color: 'var(--text2)', marginBottom: 8 }}>
-                  🎯 ИИ подобрал интересы для таргетинга:
-                </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {form.aiInterests.map((interest, i) => (
-                    <span key={i} style={{
-                      fontSize: 11, padding: '3px 10px', borderRadius: 20,
-                      background: 'rgba(124,92,252,0.2)', color: '#a78bfa', fontWeight: 500
-                    }}>
-                      {interest}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            <Field label={t('create.field_headline')}>
-              <input
-                className={styles.input}
-                value={form.headline}
-                onChange={e => update('headline', e.target.value)}
-                placeholder={t('create.field_headline')}
-              />
-            </Field>
-            <Field label={t('create.field_text')}>
-              <textarea
-                className={styles.textarea}
-                value={form.text}
-                onChange={e => update('text', e.target.value)}
-                rows={4}
-                placeholder={t('create.field_text')}
-              />
-            </Field>
-
-            <div className={styles.sectionTitle}>{t('create.section_creative_format')}</div>
-            <div className={styles.creativeGrid}>
-              {creativeTypes.map(type => (
-                <button
-                  key={type.id}
-                  type="button"
-                  className={`${styles.creativeCard} ${form.creativeType === type.id ? styles.creativeActive : ''}`}
-                  onClick={() => selectCreative(type.id)}
-                >
-                  <div className={styles.creativeLabel}>{type.label}</div>
-                  <div className={styles.creativeHint}>{type.helper}</div>
-                </button>
-              ))}
-            </div>
-
-            <p className={styles.helper}>
-              {t('create.creative.tap_hint')}
-            </p>
-
-            <input
-              ref={photoInputRef}
-              type="file"
-              accept="image/*"
-              onChange={e => handleMedia(e.target.files?.[0])}
-              style={{display:'none'}}
-            />
-            <input
-              ref={videoInputRef}
-              type="file"
-              accept="video/*"
-              onChange={e => handleMedia(e.target.files?.[0])}
-              style={{display:'none'}}
-            />
-
-            {form.image && (
-              <div className={styles.mediaPreview}>
-                {form.mediaType === 'video'
-                  ? <video className={styles.videoPreview} src={form.imagePreview} controls />
-                  : <img src={form.imagePreview} alt="" className={styles.preview} />
-                }
-                {form.mediaName && (
-                  <div className={styles.mediaMeta}>{form.mediaType === 'video' ? t('create.summary_creative_video') : t('create.summary_creative_photo')}: {form.mediaName}</div>
-                )}
-              </div>
-            )}
-
-            <Field label={t('create.field_image_prompt')}>
-              <textarea
-                className={styles.textarea}
-                value={form.imagePrompt}
-                onChange={e => update('imagePrompt', e.target.value)}
-                placeholder={t('create.field_image_prompt_placeholder')}
-                rows={3}
-              />
-            </Field>
-
-            <p className={styles.helper}>
-              {t('create.image_ref_hint')}
-            </p>
-
-            <button className={styles.aiBtn} onClick={generateImageAI} disabled={generatingImage || (!form.productDesc && !form.imagePrompt)}>
-              {generatingImage ? t('create.ai_image_loading') : t('create.ai_image')}
-            </button>
-
-            <div className={styles.sectionTitle}>{t('create.section_cta')}</div>
-            <div className={styles.ctaRow}>
-              {ctaTypes.map(type => (
-                <button
-                  key={type.id}
-                  type="button"
-                  className={`${styles.ctaButton} ${form.ctaType === type.id ? styles.ctaActive : ''}`}
-                  onClick={() => update('ctaType', type.id)}
-                >
-                  {type.label}
-                </button>
-              ))}
-            </div>
-
-            {form.ctaType === 'WHATSAPP_MESSAGE' && (
-              <Field label={t('create.field_whatsapp')}>
-                <input
-                  className={styles.input}
-                  value={form.whatsappNumber}
-                  onChange={e => update('whatsappNumber', e.target.value)}
-                  placeholder={t('create.whatsapp_placeholder')}
-                />
-              </Field>
-            )}
-
-            {form.ctaType === 'TELEGRAM' && (
-              <Field label="Ссылка на Telegram">
-                <input
-                  className={styles.input}
-                  value={form.ctaUrl}
-                  onChange={e => update('ctaUrl', e.target.value)}
-                  placeholder="https://t.me/username"
-                />
-              </Field>
-            )}
-
-            {form.ctaType === 'LEARN_MORE' && (
-              <Field label="Ссылка на сайт">
-                <input
-                  className={styles.input}
-                  value={form.ctaUrl}
-                  onChange={e => update('ctaUrl', e.target.value)}
-                  placeholder="https://yoursite.com"
-                />
-              </Field>
-            )}
-          </div>
-        )}
-
-        {step === 3 && (
-          <div className="fade-up">
-            <div className={styles.summary}>
-              <SummaryRow label={t('create.summary_budget')} value={`$${form.budget} / ${t('period.days_short')}`} />
-              <SummaryRow label={t('create.summary_geo')} value={form.geo} />
-              <SummaryRow label={t('create.summary_age')} value={`${form.ageMin}–${form.ageMax}`} />
-              <SummaryRow label={t('create.summary_headline')} value={form.headline || '—'} />
-              <SummaryRow label={t('create.summary_text')} value={form.text ? form.text.slice(0,60)+'…' : '—'} />
-              <SummaryRow
-                label={t('create.summary_creative')}
-                value={form.image
-                  ? (form.mediaType === 'video' ? t('create.summary_creative_video') : t('create.summary_creative_photo'))
-                  : t('create.summary_creative_missing')
-                }
-              />
-              <SummaryRow
-                label="CTA"
-                value={
-                  form.ctaType === 'WHATSAPP_MESSAGE' ? `WhatsApp: ${form.whatsappNumber}` :
-                  form.ctaType === 'TELEGRAM' ? `Telegram: ${form.ctaUrl}` :
-                  form.ctaType === 'LEARN_MORE' ? `Сайт: ${form.ctaUrl}` :
-                  'Написать на страницу'
-                }
-              />
-            </div>
-
-            <button
-              className={styles.launchBtn}
-              onClick={launch}
-              disabled={launching || !form.headline}
-            >
-              {launching ? t('create.launching') : t('create.launch')}
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className={styles.navBtns}>
-        {step > 0 && (
-          <button className={styles.backBtn} onClick={() => setStep(s => s - 1)}>{t('create.back')}</button>
-        )}
-        {step < 3 && (
-          <button className={styles.nextBtn} onClick={() => setStep(s => s + 1)}>
-            {t('create.next')}
-          </button>
-        )}
-      </div>
-    </div>
-  )
-}
-
-function Field({ label, children }) {
-  return (
-    <div style={{marginBottom:16}}>
-      <div style={{fontSize:12,color:'var(--text2)',marginBottom:6,fontWeight:500}}>{label}</div>
-      {children}
-    </div>
-  )
-}
-
-function SummaryRow({ label, value }) {
-  return (
-    <div style={{display:'flex',justifyContent:'space-between',padding:'12px 0',borderBottom:'1px solid var(--border)'}}>
-      <span style={{color:'var(--text2)',fontSize:13}}>{label}</span>
-      <span style={{color:'var(--text)',fontSize:13,fontWeight:500,maxWidth:'60%',textAlign:'right'}}>{value}</span>
-    </div>
-  )
-}
+                <div style={{ fontSize: 11, color
