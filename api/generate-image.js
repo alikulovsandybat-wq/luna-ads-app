@@ -17,7 +17,7 @@ function buildPrompt({ prompt, description, hasReference }) {
   return `${instruction} Subject: ${product}. Style: Quiet luxury, minimalist, premium quality, professional lighting. Background: Blurred aesthetic bokeh. CRITICAL: No text or logos on image. Leave space at top and bottom.`;
 }
 
-async function fetchWithTimeout(url, options, timeoutMs = 60000) {
+async function fetchWithTimeout(url, options, timeoutMs = 70000) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try { return await fetch(url, { ...options, signal: controller.signal }); }
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     if (!requireSubscription(user, res)) return;
 
     const { fields, files } = await parseForm(req);
-    const headline = fields.headline?.[0] || 'ЭКСКЛЮЗИВНОЕ ПРЕДЛОЖЕНИЕ';
+    const headline = fields.headline?.[0] || '';
     const buttonText = fields.text?.[0] || 'УЗНАТЬ БОЛЬШЕ';
     const referenceImage = files.reference_image?.[0];
 
@@ -56,10 +56,11 @@ export default async function handler(req, res) {
     let openAiRes;
     const authHeader = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
 
+    // ГЕНЕРАЦИЯ КАРТИНКИ
     if (referenceImage) {
       const buffer = fs.readFileSync(referenceImage.filepath);
       const formData = new FormData();
-      formData.append('model', 'dall-e-2'); // Edits стабильнее на v2
+      formData.append('model', 'dall-e-2'); 
       formData.append('prompt', finalPrompt);
       formData.append('n', '1');
       formData.append('size', '1024x1024');
@@ -78,6 +79,7 @@ export default async function handler(req, res) {
         body: JSON.stringify({
           model: 'dall-e-3',
           prompt: finalPrompt,
+          n: 1, // Всегда 1 для экономии и стабильности
           size: '1024x1024',
           response_format: 'b64_json'
         })
@@ -88,14 +90,19 @@ export default async function handler(req, res) {
     const base64FromAi = data?.data?.[0]?.b64_json;
     if (!base64FromAi) throw new Error(data?.error?.message || 'OpenAI failed');
 
-    // ГРАФИЧЕСКАЯ СБОРКА ЧЕРЕЗ SHARP
+    // ГРАФИЧЕСКАЯ СБОРКА ЧЕРЕЗ SHARP (Наложение текста)
     const bgBuffer = Buffer.from(base64FromAi, 'base64');
+    
+    // Генерируем SVG оверлей только если есть текст
     const svgOverlay = Buffer.from(`
       <svg width="1024" height="1024">
-        <rect x="0" y="0" width="1024" height="150" fill="rgba(0,0,0,0.4)" />
-        <text x="512" y="90" font-family="Arial, sans-serif" font-size="42" font-weight="bold" fill="white" text-anchor="middle">${headline.toUpperCase()}</text>
-        <rect x="312" y="860" width="400" height="85" rx="12" fill="#1a1a1a" stroke="#D4AF37" stroke-width="4" />
-        <text x="512" y="915" font-family="Arial, sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${buttonText.toUpperCase()}</text>
+        ${headline ? `
+          <rect x="0" y="0" width="1024" height="160" fill="rgba(0,0,0,0.5)" />
+          <text x="512" y="95" font-family="Arial, sans-serif" font-size="44" font-weight="bold" fill="white" text-anchor="middle">${headline.toUpperCase()}</text>
+        ` : ''}
+        
+        <rect x="312" y="860" width="400" height="90" rx="15" fill="#1a1a1a" stroke="#D4AF37" stroke-width="4" />
+        <text x="512" y="918" font-family="Arial, sans-serif" font-size="30" font-weight="bold" fill="white" text-anchor="middle">${buttonText.toUpperCase()}</text>
       </svg>
     `);
 
@@ -104,9 +111,13 @@ export default async function handler(req, res) {
       .jpeg({ quality: 90 })
       .toBuffer();
 
+    // Возвращаем результат в формате, который понимает наш обновленный CreateAd.jsx
     return res.json({
-      imageBase64: finalBuffer.toString('base64'),
-      mimeType: 'image/jpeg',
+      images: [{
+        imageBase64: finalBuffer.toString('base64'),
+        mimeType: 'image/jpeg'
+      }],
+      revisedPrompt: data?.data?.[0]?.revised_prompt,
       mode: referenceImage ? 'edit' : 'generate'
     });
 
