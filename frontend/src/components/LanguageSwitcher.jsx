@@ -1,11 +1,13 @@
-﻿import styles from './LanguageSwitcher.module.css'
+import styles from './LanguageSwitcher.module.css'
 import { useI18n } from '../i18n'
 
-export default function LanguageSwitcher() {
+// Добавили { className } в скобки, чтобы принимать стили снаружи
+export default function LanguageSwitcher({ className }) {
   const { lang, setLang, languages } = useI18n()
 
   return (
-    <div className={styles.wrap}>
+    /* Если className передан, используем его, если нет — берем стандартный wrap */
+    <div className={className || styles.wrap}>
       <select
         className={styles.select}
         value={lang}
