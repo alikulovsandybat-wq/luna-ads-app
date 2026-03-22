@@ -123,49 +123,42 @@ export default async function handler(req, res) {
       bgBuffer = Buffer.from(b64, 'base64')
     }
 
-    // Строим SVG оверлей с текстом
-    const headlineLines = headline ? wrapText(headline.toUpperCase(), 20) : []
-    const lineHeight = 72
-    const textBlockHeight = headlineLines.length * lineHeight
-    const textY = 1024 - 80 - textBlockHeight
+    // Если есть заголовок — накладываем через SVG с явным XML заголовком
+    // Sharp на Vercel умеет рендерить SVG если правильно передать XML
+    let compositeOps = []
 
-    const headlineSvg = headlineLines.map((line, i) => `
-      <text
-        x="512"
-        y="${textY + i * lineHeight}"
-        font-family="Arial, sans-serif"
-        font-size="58"
-        font-weight="bold"
-        fill="white"
-        text-anchor="middle"
-        filter="url(#shadow)"
-      >${escapeSvg(line)}</text>
-    `).join('')
+    if (headline && headline.trim()) {
+      const headlineLines = wrapText(headline.toUpperCase(), 22)
+      const lineHeight = 68
+      const totalTextH = headlineLines.length * lineHeight
+      const startY = 1024 - totalTextH - 60
 
-    const svgOverlay = Buffer.from(`
-      <svg width="1024" height="1024" xmlns="http://www.w3.org/2000/svg">
+      const textRows = headlineLines.map((line, i) =>
+        `<text x="512" y="${startY + i * lineHeight + 50}"
+          font-size="56" font-weight="bold"
+          fill="white" text-anchor="middle"
+          stroke="#000" stroke-width="4" paint-order="stroke fill"
+        >${escapeSvg(line)}</text>`
+      ).join('\n')
+
+      const svgText = `<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024">
         <defs>
-          <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" style="stop-color:rgb(0,0,0);stop-opacity:0" />
-            <stop offset="100%" style="stop-color:rgb(0,0,0);stop-opacity:0.65" />
+          <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#000" stop-opacity="0"/>
+            <stop offset="100%" stop-color="#000" stop-opacity="0.6"/>
           </linearGradient>
-          <filter id="shadow">
-            <feDropShadow dx="2" dy="2" stdDeviation="3" flood-opacity="0.8"/>
-          </filter>
         </defs>
+        <rect x="0" y="${startY - 20}" width="1024" height="${totalTextH + 80}" fill="url(#g)"/>
+        ${textRows}
+      </svg>`
 
-        ${headlineLines.length > 0 ? `
-          <rect x="0" y="${textY - 40}" width="1024" height="${textBlockHeight + 120}"
-            fill="url(#grad)" />
-          ${headlineSvg}
-        ` : ''}
-      </svg>
-    `)
+      compositeOps.push({ input: Buffer.from(svgText), top: 0, left: 0 })
+    }
 
     // Собираем финальную картинку через Sharp
     const finalBuffer = await sharp(bgBuffer)
       .resize(1024, 1024, { fit: 'cover' })
-      .composite([{ input: svgOverlay, top: 0, left: 0 }])
+      .composite(compositeOps)
       .jpeg({ quality: 92 })
       .toBuffer()
 
