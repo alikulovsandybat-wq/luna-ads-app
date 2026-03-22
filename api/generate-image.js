@@ -1,138 +1,80 @@
-import { createClient } from '@supabase/supabase-js';
+import { OpenAI } from 'openai';
 import { getTgUserId, requireSubscription } from './_subscription.js';
-import { IncomingForm } from 'formidable';
-import fs from 'fs';
-import sharp from 'sharp';
+import { createClient } from '@supabase/supabase-js';
+import sharp from 'sharp'; // Убедись, что sharp установлен в package.json
 
-export const config = { api: { bodyParser: false } };
-
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-
-function buildPrompt({ prompt, description, hasReference }) {
-  const product = prompt?.trim() || description || 'premium product';
-  const instruction = hasReference 
-    ? "Enhance this reference: improve lighting, make it professional commercial shot. Keep the same object." 
-    : "Create a minimalist commercial photo of the product.";
-
-  return `${instruction} Subject: ${product}. Style: Quiet luxury, minimalist, premium quality, professional lighting. Background: Blurred aesthetic bokeh. CRITICAL: No text or logos on image. Leave space at top and bottom for text overlays.`;
-}
-
-async function fetchWithTimeout(url, options, timeoutMs = 85000) {
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
-  try { return await fetch(url, { ...options, signal: controller.signal }); }
-  finally { clearTimeout(timeoutId); }
-}
-
-function parseForm(req) {
-  return new Promise((resolve, reject) => {
-    const form = new IncomingForm({ multiples: false });
-    form.parse(req, (err, fields, files) => {
-      if (err) reject(err); else resolve({ fields, files });
-    });
-  });
-}
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
 export default async function handler(req, res) {
-  if (req.method === 'OPTIONS') return res.status(200).end();
-  if (req.method !== 'POST') return res.status(405).end();
+  if (req.method !== 'POST') return res.status(405).send('Method not allowed');
+
+  const userId = getTgUserId(req);
+  if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {
-    const tgUserId = getTgUserId(req);
-    if (!tgUserId) return res.status(401).json({ error: 'User ID not found' });
-
-    // Получаем данные пользователя из Supabase
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('*')
-      .eq('tg_user_id', tgUserId)
-      .single();
-
-    if (userError || !user) return res.status(404).json({ error: 'User not found in database' });
+    const { data: user } = await supabase.from('users').select('*').eq('tg_userid', userId).single();
     if (!requireSubscription(user, res)) return;
 
-    const { fields, files } = await parseForm(req);
-    const headline = fields.headline?.[0] || '';
-    const buttonText = fields.text?.[0] || 'УЗНАТЬ БОЛЬШЕ';
-    const referenceImage = files.reference_image?.[0];
+    // ВАЖНО: productDesc и headline — это наши УТП из скриншота
+    const { headline, productDesc, prompt, ctaText } = req.body;
 
-    const finalPrompt = buildPrompt({
-      prompt: fields.prompt?.[0],
-      description: fields.description?.[0],
-      hasReference: Boolean(referenceImage)
+    // 1. Генерируем "чистую" картинку (без текста, чтобы он не был кривым)
+    // ИИ должен создать только "элитный" фон и объект
+    const finalPrompt = prompt || `Premium lifestyle photography for ${productDesc}. High-end lighting, minimalist style, no text.`;
+    const aiResponse = await openai.images.generate({
+      model: "dall-e-3",
+      prompt: finalPrompt,
+      n: 1,
+      size: "1024x1024",
     });
 
-    let openAiRes;
-    const authHeader = { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` };
+    // 2. ЗАГРУЖАЕМ КАРТИНКУ В БУФЕР (как в оригинале)
+    const rawImageUrl = aiResponse.data[0].url;
+    const imageResponse = await fetch(rawImageUrl);
+    const bgBuffer = Buffer.from(await imageResponse.arrayBuffer());
 
-    // ГЕНЕРАЦИЯ КАРТИНКИ
-    if (referenceImage) {
-      // Для DALL-E 2 (Edits) нужен формат PNG < 4MB
-      const buffer = fs.readFileSync(referenceImage.filepath);
-      const formData = new FormData();
-      formData.append('model', 'dall-e-2'); 
-      formData.append('prompt', finalPrompt);
-      formData.append('n', '1');
-      formData.append('size', '1024x1024');
-      formData.append('response_format', 'b64_json');
-      
-      const fileBlob = new Blob([buffer], { type: 'image/png' });
-      formData.append('image', fileBlob, 'ref.png');
-
-      openAiRes = await fetchWithTimeout('https://api.openai.com/v1/images/edits', {
-        method: 'POST',
-        headers: authHeader,
-        body: formData
-      });
-    } else {
-      openAiRes = await fetchWithTimeout('https://api.openai.com/v1/images/generations', {
-        method: 'POST',
-        headers: { ...authHeader, 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model: 'dall-e-3',
-          prompt: finalPrompt,
-          n: 1,
-          size: '1024x1024',
-          response_format: 'b64_json'
-        })
-      });
-    }
-
-    const data = await openAiRes.json();
-    const base64FromAi = data?.data?.[0]?.b64_json;
-    if (!base64FromAi) throw new Error(data?.error?.message || 'OpenAI API error');
-
-    // СБОРКА ЧЕРЕЗ SHARP
-    const bgBuffer = Buffer.from(base64FromAi, 'base64');
-    
-    // SVG оверлей (используем sans-serif для совместимости с Linux/Vercel)
+    // 3. СОЗДАЕМ SVG ОВЕРЛЕЙ (с текстом и дизайном)
+    // Мы используем sans-serif для совместимости с Serverless средой (Linux)
     const svgOverlay = Buffer.from(`
       <svg width="1024" height="1024">
-        ${headline ? `
-          <rect x="0" y="0" width="1024" height="180" fill="rgba(0,0,0,0.4)" />
-          <text x="512" y="100" font-family="sans-serif" font-size="48" font-weight="bold" fill="white" text-anchor="middle">${headline.toUpperCase()}</text>
-        ` : ''}
+        <rect x="0" y="800" width="1024" height="224" fill="url(#grad)" />
+        <defs>
+          <linearGradient id="grad" x1="0%" y1="0%" x2="0%" y2="100%">
+            <stop offset="0%" style="stop-color:rgb(0,0,0);stop-opacity:0" />
+            <stop offset="100%" style="stop-color:rgb(0,0,0);stop-opacity:0.6" />
+          </linearGradient>
+        </defs>
         
-        <rect x="312" y="860" width="400" height="90" rx="45" fill="#1a1a1a" stroke="#D4AF37" stroke-width="4" />
-        <text x="512" y="918" font-family="sans-serif" font-size="28" font-weight="bold" fill="white" text-anchor="middle">${buttonText.toUpperCase()}</text>
+        <text x="512" y="920" font-family="sans-serif" font-size="64" font-weight="bold" fill="white" text-anchor="middle">
+          ${headline ? headline.toUpperCase() : ''}
+        </text>
+
+        ${ctaText ? `
+          <rect x="312" y="960" width="400" height="40" rx="20" fill="#7c5cfc" />
+          <text x="512" y="985" font-family="sans-serif" font-size="20" font-weight="bold" fill="white" text-anchor="middle">
+            ${ctaText.toUpperCase()}
+          </text>
+        ` : ''}
       </svg>
     `);
 
+    // 4. СБОРКА ЧЕРЕЗ SHARP (тот самый код, который я вернула)
     const finalBuffer = await sharp(bgBuffer)
       .composite([{ input: svgOverlay, top: 0, left: 0 }])
       .jpeg({ quality: 95 })
       .toBuffer();
 
-    return res.json({
-      images: [{
-        imageBase64: finalBuffer.toString('base64'),
-        mimeType: 'image/jpeg'
-      }],
-      revisedPrompt: data?.data?.[0]?.revised_prompt
-    });
+    // Конвертируем в Base64 для моментального отображения на фронте
+    const base64Image = `data:image/png;base64,${finalBuffer.toString('base64')}`;
+
+    // Логируем
+    await supabase.from('ai_logs').insert({ user_id: user.id, type: 'pro_sharp_gen' });
+
+    res.status(200).json({ url: base64Image });
 
   } catch (error) {
-    console.error('API Error:', error);
-    res.status(500).json({ error: error.message });
+    console.error('Sharp processing error:', error);
+    return res.status(500).json({ error: 'Failed to assemble creative' });
   }
 }
