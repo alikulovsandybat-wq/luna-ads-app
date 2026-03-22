@@ -1,4 +1,6 @@
-﻿* {
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+* {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
@@ -7,22 +9,26 @@
 
 :root {
   color-scheme: light;
-  --bg: #f2f5fb;
+  /* Обновляем цвета на более чистые и современные */
+  --bg: #F9FAFB;
   --bg2: #ffffff;
-  --bg3: #eef2f9;
+  --bg3: #F3F4F6;
   --card: #ffffff;
-  --border: rgba(15, 23, 42, 0.08);
-  --accent: #4b7bff;
-  --accent2: #6f63ff;
-  --accent-glow: rgba(75, 123, 255, 0.22);
-  --green: #16a34a;
-  --red: #ef4444;
-  --text: #101828;
-  --text2: #4a5874;
-  --text3: #8a95a8;
-  --font-display: 'Unbounded', sans-serif;
-  --font-body: 'Golos Text', sans-serif;
-  --radius: 16px;
+  --border: rgba(0, 0, 0, 0.05);
+  --accent: #007AFF; /* Элитный синий Apple-style */
+  --accent2: #6366F1;
+  --accent-glow: rgba(0, 122, 255, 0.15);
+  --green: #10B981;
+  --red: #EF4444;
+  --text: #111827; /* Глубокий темный для дорогого вида */
+  --text2: #4B5563;
+  --text3: #9CA3AF;
+  
+  /* Меняем шрифты на Inter — он выглядит дороже и чище */
+  --font-display: 'Inter', sans-serif;
+  --font-body: 'Inter', sans-serif;
+  
+  --radius: 14px;
   --radius-sm: 10px;
 }
 
@@ -31,18 +37,16 @@ html, body, #root {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font-body);
-  font-size: 15px;
-  line-height: 1.5;
+  /* Увеличиваем базовый шрифт, чтобы не был мелким */
+  font-size: 16px; 
+  line-height: 1.6;
   overflow-x: hidden;
 }
 
-/* Telegram theme override */
+/* Telegram theme override — убираем лишние градиенты для чистоты */
 body {
   background-color: var(--tg-theme-bg-color, var(--bg));
-  background-image:
-    radial-gradient(circle at top, rgba(75, 123, 255, 0.12), transparent 35%),
-    linear-gradient(180deg, #f8faff 0%, var(--bg) 60%, #e9eef7 100%);
-  background-attachment: fixed;
+  background-image: none; /* Чистый фон выглядит статуснее */
 }
 
 ::-webkit-scrollbar { width: 0; }
@@ -52,22 +56,24 @@ button {
   cursor: pointer;
   border: none;
   outline: none;
+  transition: all 0.2s ease;
+}
+
+/* Эффект нажатия для всех кнопок */
+button:active {
+  transform: scale(0.97);
 }
 
 input, select, textarea {
   font-family: var(--font-body);
   outline: none;
+  font-size: 16px; /* Защита от автозума на iOS */
 }
 
-/* Animations */
+/* Animations — оставляем твои крутые анимации */
 @keyframes fadeUp {
   from { opacity: 0; transform: translateY(16px); }
   to   { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0.5; }
 }
 
 @keyframes shimmer {
