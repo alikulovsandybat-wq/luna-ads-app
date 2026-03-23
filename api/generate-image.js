@@ -109,7 +109,12 @@ async function renderWithCreatomate(templateId, modifications) {
       'Authorization': `Bearer ${process.env.CREATOMATE_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({ template_id: templateId, modifications })
+    body: JSON.stringify({
+      template_id: templateId,
+      output_format: 'jpg',
+      frame: 'last',
+      modifications
+    })
   })
 
   const data = await res.json()
