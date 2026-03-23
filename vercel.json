@@ -57,8 +57,13 @@
     },
     "api/launch.js": {
       "maxDuration": 30
-    }
-  },
+    },
+    "api/generate-image.js": { "maxDuration": 60 },
+    "api/render-status.js":  { "maxDuration": 10 },
+    "api/generate.js":       { "maxDuration": 30 },
+    "api/launch.js":         { "maxDuration": 30 }
+  }
+},  
   "crons": [
     {
       "path": "/api/cron/daily-report",
