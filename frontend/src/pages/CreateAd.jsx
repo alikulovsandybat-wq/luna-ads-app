@@ -17,12 +17,21 @@ function base64ToFile(base64, mimeType, fileName) {
 // ── Наложение текста через Canvas (работает в браузере без fontconfig) ──────
 
 function notify(message, callback) {
-  if (window.Telegram?.WebApp?.showAlert) {
-    window.Telegram.WebApp.showAlert(message, callback)
-    return
+  const tg = window.Telegram?.WebApp;
+  
+  // Проверяем: мы в Telegram (есть initData) И метод поддерживается
+  if (tg?.initData && typeof tg.showAlert === 'function') {
+    try {
+      tg.showAlert(message, callback);
+      return;
+    } catch (e) {
+      console.warn("Telegram showAlert failed, falling back to browser alert", e);
+    }
   }
-  window.alert(message)
-  callback?.()
+
+  // Если мы в браузере, в очень старом TG или showAlert сбоит
+  window.alert(message);
+  callback?.();
 }
 
 // ── Модальное окно успешного запуска ──────────────────────────────────────────
