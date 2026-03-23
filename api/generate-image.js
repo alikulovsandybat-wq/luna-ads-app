@@ -20,10 +20,10 @@ const TEMPLATES = {
       'автомобил', 'машин', 'авто', 'car', 'vehicle',
       'бизнес', 'business', 'b2b', 'компани', 'агентств'],
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
-      'Image': imageUrl,             // фоновое изображение
-      'Заголовок': headline || '',   // главный заголовок
-      'Text-6J6': bodyText || '',    // подзаголовок
-      'Text-HPB': cta || '',         // дополнительный текст
+      'Image': imageUrl,
+      'Headline': headline || '',
+      'Text-6J6': bodyText || '',
+      'Text-HPB': cta || '',
     })
   },
   premium: {
