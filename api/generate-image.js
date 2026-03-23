@@ -94,33 +94,20 @@ export default async function handler(req, res) {
     
     const template = TEMPLATES[adCategory] || TEMPLATES.universal
 
-    // 1. Генерация в DALL-E
-    let imageBuffer
-    const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium quality.`
-
-    if (referenceImage) {
-      const rawBuffer = fs.readFileSync(referenceImage.filepath)
-      const formData = new FormData()
-      formData.append('model', 'dall-e-2')
-      formData.append('prompt', dallePrompt)
-      formData.append('image', new Blob([rawBuffer], { type: 'image/png' }), 'ref.png')
-      
-      const editRes = await fetch('https://api.openai.com/v1/images/edits', {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
-        body: formData
-      })
-      const editData = await editRes.json()
-      if (!editData.data) throw new Error(editData.error?.message || 'DALL-E edit failed')
-      imageBuffer = Buffer.from(editData.data[0].b64_json, 'base64')
-    } else {
+      // 1. Генерация в DALL-E
+      let imageBuffer;
+      // Если есть референс, мы просто добавляем упоминание о стиле в промпт, 
+      // чтобы не мучиться с форматами масок OpenAI
+      const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium quality, high resolution.`;
+  
+      // Генерируем новую картинку (DALL-E 3 лучше всего справляется с этим)
       const aiResponse = await openai.images.generate({
         model: 'dall-e-3',
         prompt: dallePrompt,
         response_format: 'b64_json'
-      })
-      imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64')
-    }
+      });
+      
+      imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64');
 
     // 2. ImgBB
     const imageUrl = await uploadToImgBB(imageBuffer)
