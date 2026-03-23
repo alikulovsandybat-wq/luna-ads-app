@@ -712,7 +712,7 @@ export default function CreateAd() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button className={styles.aiBtn}
                 onClick={generateImageAI}
-                disabled={generatingImage || (generatedImages.length === 0 && !form.productDesc && !form.imagePrompt)}
+                disabled={generatingImage || (!form.productDesc && !form.imagePrompt)}
                 style={{ flex: 1, position: 'relative' }}>
                 {generatingImage ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
