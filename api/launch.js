@@ -104,6 +104,7 @@ export default async function handler(req, res) {
       campaign_id: campaignId,
       billing_event: 'IMPRESSIONS',
       optimization_goal: 'REACH',
+      bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       daily_budget: Math.round(parseFloat(budget) * 100),
       targeting,
       status: 'ACTIVE'
