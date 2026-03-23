@@ -99,11 +99,11 @@ export default async function handler(req, res) {
       targeting.flexible_spec = [{ interests: interestTargeting }]
     }
 
-    const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
+        const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
       name: `Группа — ${geo} ${ageMin}-${ageMax}`,
       campaign_id: campaignId,
       billing_event: 'IMPRESSIONS',
-      optimization_goal: 'LINK_CLICKS',
+      optimization_goal: 'REACH',
       daily_budget: Math.round(parseFloat(budget) * 100),
       targeting,
       status: 'ACTIVE'
