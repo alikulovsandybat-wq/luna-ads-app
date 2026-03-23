@@ -14,6 +14,85 @@ function base64ToFile(base64, mimeType, fileName) {
   return new File([bytes], fileName, { type: mimeType })
 }
 
+// ── Наложение текста через Canvas (работает в браузере без fontconfig) ──────
+async function overlayTextOnImage(imageBase64, mimeType, headline) {
+  if (!headline || !headline.trim()) {
+    // Нет заголовка — возвращаем картинку как есть
+    return { imageBase64, mimeType }
+  }
+
+  return new Promise((resolve) => {
+    const img = new Image()
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = img.width
+      canvas.height = img.height
+      const ctx = canvas.getContext('2d')
+
+      // Рисуем картинку
+      ctx.drawImage(img, 0, 0)
+
+      // Параметры текста
+      const text = headline.toUpperCase()
+      const maxWidth = canvas.width * 0.85
+      const fontSize = Math.round(canvas.width * 0.058)
+      ctx.font = `bold ${fontSize}px Arial, Helvetica, sans-serif`
+
+      // Разбиваем текст на строки
+      const words = text.split(' ')
+      const lines = []
+      let currentLine = ''
+      for (const word of words) {
+        const testLine = currentLine ? `${currentLine} ${word}` : word
+        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
+          lines.push(currentLine)
+          currentLine = word
+        } else {
+          currentLine = testLine
+        }
+      }
+      if (currentLine) lines.push(currentLine)
+      const maxLines = lines.slice(0, 3)
+
+      const lineHeight = fontSize * 1.25
+      const totalTextHeight = maxLines.length * lineHeight
+      const paddingV = 40
+      const gradientStartY = canvas.height - totalTextHeight - paddingV * 2 - 20
+
+      // Градиент снизу
+      const gradient = ctx.createLinearGradient(0, gradientStartY, 0, canvas.height)
+      gradient.addColorStop(0, 'rgba(0,0,0,0)')
+      gradient.addColorStop(1, 'rgba(0,0,0,0.70)')
+      ctx.fillStyle = gradient
+      ctx.fillRect(0, gradientStartY, canvas.width, canvas.height - gradientStartY)
+
+      // Рисуем текст
+      ctx.textAlign = 'center'
+      ctx.textBaseline = 'middle'
+
+      maxLines.forEach((line, i) => {
+        const y = canvas.height - totalTextHeight - paddingV + i * lineHeight + lineHeight / 2
+
+        // Чёрная обводка
+        ctx.strokeStyle = 'rgba(0,0,0,0.9)'
+        ctx.lineWidth = fontSize * 0.08
+        ctx.lineJoin = 'round'
+        ctx.strokeText(line, canvas.width / 2, y)
+
+        // Белый текст
+        ctx.fillStyle = '#ffffff'
+        ctx.fillText(line, canvas.width / 2, y)
+      })
+
+      // Экспортируем как base64
+      const resultBase64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1]
+      resolve({ imageBase64: resultBase64, mimeType: 'image/jpeg' })
+    }
+    img.onerror = () => resolve({ imageBase64, mimeType }) // fallback
+    img.src = `data:${mimeType};base64,${imageBase64}`
+  })
+}
+
 function notify(message, callback) {
   if (window.Telegram?.WebApp?.showAlert) {
     window.Telegram.WebApp.showAlert(message, callback)
@@ -107,7 +186,7 @@ function ImageCarousel({ images, selectedIndex, onSelect }) {
         <img
           src={images[current]}
           alt={`Вариант ${current + 1}`}
-          style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block', background: '#000' }}
+          style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
         />
         {/* Метка "Выбрано" */}
         <div style={{
@@ -191,6 +270,38 @@ export default function CreateAd() {
     { id: 'ai', label: t('create.creative.ai.label'), helper: t('create.creative.ai.helper') }
   ]
 
+  // Категории рекламы для выбора шаблона Creatomate
+  const adCategories = [
+    {
+      id: 'saas',
+      icon: '💻',
+      label: 'SaaS / Бизнес',
+      hint: 'Приложения, сервисы, B2B, авто, недвижимость',
+      color: '#007AFF'
+    },
+    {
+      id: 'ecommerce',
+      icon: '🛍️',
+      label: 'E-commerce',
+      hint: 'Одежда, косметика, товары, магазины',
+      color: '#f59e0b'
+    },
+    {
+      id: 'premium',
+      icon: '✨',
+      label: 'Премиум / Обучение',
+      hint: 'Курсы, коучинг, психологи, блогеры, эксперты',
+      color: '#7c3aed'
+    },
+    {
+      id: 'universal',
+      icon: '🎯',
+      label: 'Универсальный',
+      hint: 'Подходит для любой ниши',
+      color: '#059669'
+    },
+  ]
+
   const ctaTypes = [
     { id: 'MESSAGE_PAGE', label: t('create.cta.message') },
     { id: 'WHATSAPP_MESSAGE', label: t('create.cta.whatsapp') },
@@ -216,7 +327,8 @@ export default function CreateAd() {
     ctaType: 'MESSAGE_PAGE',
     whatsappNumber: '',
     ctaUrl: '',
-    aiInterests: []
+    aiInterests: [],
+    adCategory: 'universal' // категория для выбора шаблона Creatomate
   })
 
   function update(key, val) {
@@ -277,6 +389,7 @@ export default function CreateAd() {
       fd.append('headline', form.headline)
       fd.append('text', form.text)
       fd.append('geo', form.geo)
+      fd.append('adCategory', form.adCategory) // передаём выбранную категорию
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
 
       const res = await fetch(`${API}/api/generate-image`, {
@@ -289,8 +402,12 @@ export default function CreateAd() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
 
-      const file = base64ToFile(data.imageBase64, data.mimeType || 'image/png', 'ai-creative.png')
-      const previewUrl = `data:${data.mimeType || 'image/png'};base64,${data.imageBase64}`
+      // Creatomate уже наложил текст — используем картинку напрямую
+      const imageBase64 = data.imageBase64
+      const finalMime = data.mimeType || 'image/jpeg'
+
+      const file = base64ToFile(imageBase64, finalMime, 'ai-creative.jpg')
+      const previewUrl = `data:${finalMime};base64,${imageBase64}`
 
       // Добавляем к существующим (макс 3)
       setGeneratedImages(prev => {
@@ -554,6 +671,36 @@ export default function CreateAd() {
               />
             )}
 
+            <Field label="Категория рекламы">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {adCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => update('adCategory', cat.id)}
+                    style={{
+                      padding: '12px 10px', borderRadius: 12, cursor: 'pointer',
+                      border: `2px solid ${form.adCategory === cat.id ? cat.color : 'var(--border)'}`,
+                      background: form.adCategory === cat.id ? cat.color + '12' : 'var(--card)',
+                      textAlign: 'left', transition: 'all 0.2s',
+                      boxShadow: form.adCategory === cat.id ? `0 2px 8px ${cat.color}33` : 'none'
+                    }}
+                  >
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{cat.icon}</div>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700,
+                      color: form.adCategory === cat.id ? cat.color : 'var(--text)'
+                    }}>
+                      {cat.label}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.3 }}>
+                      {cat.hint}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Field>
+
             <Field label={t('create.field_image_prompt')}>
               <textarea className={styles.textarea} value={form.imagePrompt}
                 onChange={e => update('imagePrompt', e.target.value)}
@@ -566,14 +713,24 @@ export default function CreateAd() {
               <button className={styles.aiBtn}
                 onClick={generateImageAI}
                 disabled={generatingImage || (!form.productDesc && !form.imagePrompt)}
-                style={{ flex: 1 }}>
-                {generatingImage
-                  ? t('create.ai_image_loading')
-                  : generatedImages.length > 0
-                    ? '🔄 Перегенерировать'
-                    : t('create.ai_image')}
+                style={{ flex: 1, position: 'relative' }}>
+                {generatingImage ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: '#fff',
+                      animation: 'spin 0.8s linear infinite',
+                      display: 'inline-block', flexShrink: 0
+                    }} />
+                    {t('create.ai_image_loading')}
+                  </span>
+                ) : generatedImages.length > 0
+                  ? '🔄 Перегенерировать'
+                  : t('create.ai_image')}
               </button>
             </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
             <div className={styles.sectionTitle}>{t('create.section_cta')}</div>
             <div className={styles.ctaRow}>
