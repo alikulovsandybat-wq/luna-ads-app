@@ -105,6 +105,10 @@ async function renderWithCreatomate(templateId, modifications) {
   throw new Error('Creatomate render timeout')
 }
 
+export const config = { api: { bodyParser: false } }
+
+// ... импорты те же ...
+
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).send('Method not allowed')
@@ -117,28 +121,25 @@ export default async function handler(req, res) {
     if (!requireSubscription(user, res)) return
 
     const { fields, files } = await parseForm(req)
-
-    const description = fields.description?.[0] || fields.productDesc?.[0] || ''
+    const description = fields.description?.[0] || ''
     const headline = fields.headline?.[0] || ''
     const bodyText = fields.text?.[0] || ''
-    const ctaText = fields.cta?.[0] || '' // Тот самый CTA из ИИ
+    const ctaText = fields.cta?.[0] || ''
     const promptText = fields.prompt?.[0] || ''
     const adCategory = fields.adCategory?.[0] || 'universal'
     const referenceImage = files.reference_image?.[0]
-
     const template = TEMPLATES[adCategory] || TEMPLATES.universal
 
+    // 1. Генерируем картинку через DALL-E
     let imageBuffer
     const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium quality.`
 
     if (referenceImage) {
-      // Прямое чтение файла БЕЗ SHARP
       const rawBuffer = fs.readFileSync(referenceImage.filepath)
       const formData = new FormData()
       formData.append('model', 'dall-e-2')
       formData.append('prompt', dallePrompt)
       formData.append('image', new Blob([rawBuffer], { type: 'image/png' }), 'ref.png')
-      
       const editRes = await fetch('https://api.openai.com/v1/images/edits', {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
@@ -157,18 +158,35 @@ export default async function handler(req, res) {
       imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64')
     }
 
+    // 2. Загружаем на ImgBB
     const imageUrl = await uploadToImgBB(imageBuffer)
-    
-    // Передаем ctaText в модификации!
+
+    // 3. Запускаем Creatomate НО НЕ ЖДЁМ — только получаем render_id
     const modifications = template.buildModifications(imageUrl, headline, bodyText, ctaText)
+    
+    const creatomateRes = await fetch('https://api.creatomate.com/v1/renders', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.CREATOMATE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        template_id: template.id,
+        output_format: 'jpg',
+        modifications
+      })
+    })
+    
+    const creatomateData = await creatomateRes.json()
+    if (!creatomateRes.ok) throw new Error('Creatomate start failed: ' + JSON.stringify(creatomateData))
+    
+    const renderId = Array.isArray(creatomateData) ? creatomateData[0]?.id : creatomateData?.id
+    if (!renderId) throw new Error('No render ID from Creatomate')
 
-    const bannerUrl = await renderWithCreatomate(template.id, modifications)
-    const bannerRes = await fetch(bannerUrl)
-    const finalBuffer = Buffer.from(await bannerRes.arrayBuffer())
-
-    res.status(200).json({
-      imageBase64: finalBuffer.toString('base64'),
-      mimeType: 'image/jpeg'
+    // 4. Сразу возвращаем render_id — НЕ ждём рендера!
+    return res.status(200).json({ 
+      status: 'processing',
+      renderId 
     })
 
   } catch (error) {
