@@ -99,7 +99,7 @@ async function renderWithCreatomate(templateId, modifications) {
       template_id: templateId,
       output_format: 'jpg',
       frame: 'last',
-      modifications
+      modifications: modifications
     })
   })
 
@@ -116,7 +116,7 @@ async function renderWithCreatomate(templateId, modifications) {
     await new Promise(r => setTimeout(r, 3000))
 
     const statusRes = await fetch(
-      `https://api.creatomate.com/v1/renders/${renderId}`,
+      `https://api.creatomate.com/v2/renders/${renderId}`,
       { headers: { 'Authorization': `Bearer ${process.env.CREATOMATE_API_KEY}` } }
     )
     const status = await statusRes.json()
