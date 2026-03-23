@@ -309,13 +309,18 @@ export default function CreateAd() {
     }
   }
 
-   async function generateImageAI() {
-    if (!form.productDesc && !form.imagePrompt) {
-      notify('Заполните описание продукта')
-      return
+      async function generateImageAI() {
+    // Проверяем: есть ли хоть какой-то текст для картинки? 
+    // ИИ может создать картинку на основе описания ИЛИ на основе уже готового заголовка/текста
+    const canGenerate = form.productDesc || form.imagePrompt || (form.headline && form.text);
+  
+    if (!canGenerate) {
+      notify('Пожалуйста, заполните описание или текст объявления, чтобы создать картинку');
+      return;
     }
   
-    setGeneratingImage(true)
+      
+     setGeneratingImage(true)
     try {
       // Шаг 1: запускаем генерацию
       const fd = new FormData()
