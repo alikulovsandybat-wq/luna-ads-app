@@ -3,6 +3,7 @@ import { getTgUserId, requireSubscription } from './_subscription.js'
 import { createClient } from '@supabase/supabase-js'
 import { IncomingForm } from 'formidable'
 import fs from 'fs'
+import sharp from 'sharp' // 1. Импортируем sharp
 
 export const config = { api: { bodyParser: false } }
 
@@ -83,7 +84,6 @@ export default async function handler(req, res) {
 
     const { fields, files } = await parseForm(req)
     
-    // Используем Headline/Text если Description пустой
     const description = fields.description?.[0] || fields.text?.[0] || fields.headline?.[0] || ''
     const headline = fields.headline?.[0] || ''
     const bodyText = fields.text?.[0] || ''
@@ -94,20 +94,39 @@ export default async function handler(req, res) {
     
     const template = TEMPLATES[adCategory] || TEMPLATES.universal
 
-      // 1. Генерация в DALL-E
-      let imageBuffer;
-      // Если есть референс, мы просто добавляем упоминание о стиле в промпт, 
-      // чтобы не мучиться с форматами масок OpenAI
-      const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium quality, high resolution.`;
-  
-      // Генерируем новую картинку (DALL-E 3 лучше всего справляется с этим)
+    // 1. ГЕНЕРАЦИЯ В DALL-E (С УЧЕТОМ РЕФЕРЕНСА И SHARP)
+    let imageBuffer
+    // Улучшенный промпт для DALL-E 3 ( Vogue style)
+    const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium, high-end commercial advertising photography, studio lighting, soft shadows, 8k resolution, photorealistic, Vogue style, minimalist composition.`;
+
+    if (referenceImage) {
+      // 2. Обработка референса через sharp для DALL-E 2 (Image-to-Image)
+      const rawBuffer = fs.readFileSync(referenceImage.filepath)
+      // Конвертируем в PNG и добавляем альфа-канал, чтобы избежать ошибки RGBA
+      const processedBuffer = await sharp(rawBuffer).ensureAlpha().toBuffer()
+      
+      const formData = new FormData()
+      formData.append('model', 'dall-e-2') // DALL-E 2 нужен для edits/variations
+      formData.append('prompt', dallePrompt)
+      formData.append('image', new Blob([processedBuffer], { type: 'image/png' }), 'ref.png')
+      
+      const editRes = await fetch('https://api.openai.com/v1/images/edits', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
+        body: formData
+      })
+      const editData = await editRes.json()
+      if (!editData.data) throw new Error(editData.error?.message || 'DALL-E edit failed')
+      imageBuffer = Buffer.from(editData.data[0].b64_json, 'base64')
+    } else {
+      // 3. Обычная генерация через DALL-E 3 (если нет референса)
       const aiResponse = await openai.images.generate({
         model: 'dall-e-3',
         prompt: dallePrompt,
         response_format: 'b64_json'
-      });
-      
-      imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64');
+      })
+      imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64')
+    }
 
     // 2. ImgBB
     const imageUrl = await uploadToImgBB(imageBuffer)
