@@ -94,8 +94,8 @@ async function uploadToImgBB(buffer) {
     { method: 'POST', body: formData }
   )
   const data = await res.json()
-  if (!data?.data?.url) throw new Error('ImgBB upload failed: ' + JSON.stringify(data))
-  return data.data.url
+  if (!data?.data?.display_url) throw new Error('ImgBB upload failed: ' + JSON.stringify(data))
+  return data.data.display_url // прямая ссылка на файл, не страница
 }
 
 // Рендерим баннер через Creatomate и ждём результата
