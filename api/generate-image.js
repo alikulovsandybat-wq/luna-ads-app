@@ -15,55 +15,41 @@ const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SER
 const TEMPLATES = {
   saas: {
     id: '363107a3-5653-4c00-a495-7402e2b8d0d0',
-    name: 'Blank template',
-    keywords: ['saas', 'технологи', 'software', 'приложени', 'сервис', 'платформ',
-      'автомобил', 'машин', 'авто', 'car', 'vehicle',
-      'бизнес', 'business', 'b2b', 'компани', 'агентств'],
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
-      'Image': imageUrl,
+      'Background_Image': imageUrl,
       'Headline': headline || '',
-      'Text-6J6': bodyText || '',   // текст тела объявления
-      'Text-HPB': '',               // можно использовать для CTA
+      'Subheadline': bodyText || '',
+      'CTA_Text': cta || 'Learn More'
     })
   },
   premium: {
     id: '87e4c15b-8675-4cf3-a7e0-5b6a73a237ee',
-    name: 'Text Squash',
-    keywords: ['премиум', 'premium', 'люкс', 'luxury', 'обучени', 'курс', 'course',
-      'психолог', 'коуч', 'coach', 'блогер', 'blogger', 'эксперт', 'expert',
-      'тренинг', 'consulting', 'консультац', 'наставник',
-      'недвижимост', 'real estate', 'квартир', 'дом'],
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
-      'Background-Image': imageUrl,
-      'Text-1': headline || '',      // главный заголовок
-      'Text-2': bodyText || '',      // подзаголовок
-      'Text-3': cta || '',           // дата/доп инфо
-      'Text-4': '',                  // сайт
+      'Background_Image': imageUrl,
+      'Headline': headline || '',
+      'Subheadline': bodyText || '',
+      'CTA_Text': cta || 'Get Started'
     })
   },
   ecommerce: {
     id: '91caeced-efb9-46c4-84aa-2bc949adbe4f',
-    name: 'Flip Product Hero',
-    keywords: ['одежд', 'fashion', 'косметик', 'beauty', 'магазин', 'shop', 'store',
-      'товар', 'продукт', 'product', 'бренд', 'brand', 'обувь', 'shoes',
-      'аксессуар', 'украшени', 'jewelry', 'парфюм', 'perfume'],
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
-      'Product Image': imageUrl,
-      'Caption': headline || '',
-      'Call To Action': cta || bodyText || 'Узнать больше',
+      'Background_Image': imageUrl,
+      'Headline': headline || '',
+      'Subheadline': bodyText || '',
+      'CTA_Text': cta || 'Shop Now'
     })
   },
   universal: {
-    id: 'e4229ace-5156-42e8-a024-d257beec9559',
-    name: 'Minimalistic Product Hero',
-    keywords: [],
+    id: '3fed1e6c-d623-4999-9d18-ec86aa12880a',
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
-      'Product-Image': imageUrl,      // главное фото продукта
-      'Background-Image': imageUrl,   // тот же фон (Creatomate размоет сам)
-      'CTA': cta || headline || 'Shop Now',
+      'Background_Image': imageUrl,
+      'Headline': headline || '',
+      'Subheadline': bodyText || '',
+      'CTA_Text': cta || 'Learn More'
     })
   }
-}
+};
 
 function detectTemplate(description) {
   if (!description) return TEMPLATES.universal
