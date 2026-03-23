@@ -9,7 +9,6 @@ export const config = { api: { bodyParser: false } }
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY })
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY)
 
-// ── Шаблоны с точными именами элементов из Creatomate ────────────────────────
 const TEMPLATES = {
   saas: {
     id: '363107a3-5653-4c00-a495-7402e2b8d0d0',
@@ -71,44 +70,6 @@ async function uploadToImgBB(buffer) {
   return data.data.display_url
 }
 
-async function renderWithCreatomate(templateId, modifications) {
-  const res = await fetch('https://api.creatomate.com/v1/renders', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.CREATOMATE_API_KEY}`,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({
-      template_id: templateId,
-      output_format: 'jpg',
-      frame: 'last',
-      modifications: modifications
-    })
-  })
-
-  const data = await res.json()
-  if (!res.ok) throw new Error('Creatomate API error: ' + JSON.stringify(data))
-
-  const renderId = Array.isArray(data) ? data[0]?.id : data?.id
-  if (!renderId) throw new Error('No render ID')
-
-  // Polling
-  for (let i = 0; i < 30; i++) {
-    await new Promise(r => setTimeout(r, 3000))
-    const statusRes = await fetch(`https://api.creatomate.com/v1/renders/${renderId}`, {
-      headers: { 'Authorization': `Bearer ${process.env.CREATOMATE_API_KEY}` }
-    })
-    const status = await statusRes.json()
-    if (status.status === 'succeeded') return status.url
-    if (status.status === 'failed') throw new Error('Render failed: ' + status.error_message)
-  }
-  throw new Error('Creatomate render timeout')
-}
-
-export const config = { api: { bodyParser: false } }
-
-// ... импорты те же ...
-
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).send('Method not allowed')
@@ -121,16 +82,19 @@ export default async function handler(req, res) {
     if (!requireSubscription(user, res)) return
 
     const { fields, files } = await parseForm(req)
-    const description = fields.description?.[0] || ''
+    
+    // Используем Headline/Text если Description пустой
+    const description = fields.description?.[0] || fields.text?.[0] || fields.headline?.[0] || ''
     const headline = fields.headline?.[0] || ''
     const bodyText = fields.text?.[0] || ''
     const ctaText = fields.cta?.[0] || ''
     const promptText = fields.prompt?.[0] || ''
     const adCategory = fields.adCategory?.[0] || 'universal'
     const referenceImage = files.reference_image?.[0]
+    
     const template = TEMPLATES[adCategory] || TEMPLATES.universal
 
-    // 1. Генерируем картинку через DALL-E
+    // 1. Генерация в DALL-E
     let imageBuffer
     const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium quality.`
 
@@ -140,15 +104,15 @@ export default async function handler(req, res) {
       formData.append('model', 'dall-e-2')
       formData.append('prompt', dallePrompt)
       formData.append('image', new Blob([rawBuffer], { type: 'image/png' }), 'ref.png')
+      
       const editRes = await fetch('https://api.openai.com/v1/images/edits', {
         method: 'POST',
         headers: { Authorization: `Bearer ${process.env.OPENAI_API_KEY}` },
         body: formData
       })
       const editData = await editRes.json()
-      const b64 = editData?.data?.[0]?.b64_json
-      if (!b64) throw new Error(editData?.error?.message || 'DALL-E edit failed')
-      imageBuffer = Buffer.from(b64, 'base64')
+      if (!editData.data) throw new Error(editData.error?.message || 'DALL-E edit failed')
+      imageBuffer = Buffer.from(editData.data[0].b64_json, 'base64')
     } else {
       const aiResponse = await openai.images.generate({
         model: 'dall-e-3',
@@ -158,10 +122,10 @@ export default async function handler(req, res) {
       imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64')
     }
 
-    // 2. Загружаем на ImgBB
+    // 2. ImgBB
     const imageUrl = await uploadToImgBB(imageBuffer)
 
-    // 3. Запускаем Creatomate НО НЕ ЖДЁМ — только получаем render_id
+    // 3. Creatomate (запуск задачи)
     const modifications = template.buildModifications(imageUrl, headline, bodyText, ctaText)
     
     const creatomateRes = await fetch('https://api.creatomate.com/v1/renders', {
@@ -178,12 +142,11 @@ export default async function handler(req, res) {
     })
     
     const creatomateData = await creatomateRes.json()
-    if (!creatomateRes.ok) throw new Error('Creatomate start failed: ' + JSON.stringify(creatomateData))
+    if (!creatomateRes.ok) throw new Error('Creatomate failed: ' + JSON.stringify(creatomateData))
     
     const renderId = Array.isArray(creatomateData) ? creatomateData[0]?.id : creatomateData?.id
-    if (!renderId) throw new Error('No render ID from Creatomate')
 
-    // 4. Сразу возвращаем render_id — НЕ ждём рендера!
+    // 4. Возвращаем renderId фронтенду
     return res.status(200).json({ 
       status: 'processing',
       renderId 
