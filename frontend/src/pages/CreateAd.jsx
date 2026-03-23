@@ -402,16 +402,9 @@ export default function CreateAd() {
       const data = await res.json()
       if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
 
-      // Получаем чистую картинку от бэкенда
-      const rawBase64 = data.imageBase64
-      const rawMime = data.mimeType || 'image/jpeg'
-
-      // Накладываем текст через Canvas на фронте
-      const { imageBase64, mimeType: finalMime } = await overlayTextOnImage(
-        rawBase64,
-        rawMime,
-        form.headline
-      )
+      // Creatomate уже наложил текст — используем картинку напрямую
+      const imageBase64 = data.imageBase64
+      const finalMime = data.mimeType || 'image/jpeg'
 
       const file = base64ToFile(imageBase64, finalMime, 'ai-creative.jpg')
       const previewUrl = `data:${finalMime};base64,${imageBase64}`
