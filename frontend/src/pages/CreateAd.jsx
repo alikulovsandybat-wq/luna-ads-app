@@ -15,83 +15,6 @@ function base64ToFile(base64, mimeType, fileName) {
 }
 
 // ── Наложение текста через Canvas (работает в браузере без fontconfig) ──────
-async function overlayTextOnImage(imageBase64, mimeType, headline) {
-  if (!headline || !headline.trim()) {
-    // Нет заголовка — возвращаем картинку как есть
-    return { imageBase64, mimeType }
-  }
-
-  return new Promise((resolve) => {
-    const img = new Image()
-    img.onload = () => {
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width
-      canvas.height = img.height
-      const ctx = canvas.getContext('2d')
-
-      // Рисуем картинку
-      ctx.drawImage(img, 0, 0)
-
-      // Параметры текста
-      const text = headline.toUpperCase()
-      const maxWidth = canvas.width * 0.85
-      const fontSize = Math.round(canvas.width * 0.058)
-      ctx.font = `bold ${fontSize}px Arial, Helvetica, sans-serif`
-
-      // Разбиваем текст на строки
-      const words = text.split(' ')
-      const lines = []
-      let currentLine = ''
-      for (const word of words) {
-        const testLine = currentLine ? `${currentLine} ${word}` : word
-        if (ctx.measureText(testLine).width > maxWidth && currentLine) {
-          lines.push(currentLine)
-          currentLine = word
-        } else {
-          currentLine = testLine
-        }
-      }
-      if (currentLine) lines.push(currentLine)
-      const maxLines = lines.slice(0, 3)
-
-      const lineHeight = fontSize * 1.25
-      const totalTextHeight = maxLines.length * lineHeight
-      const paddingV = 40
-      const gradientStartY = canvas.height - totalTextHeight - paddingV * 2 - 20
-
-      // Градиент снизу
-      const gradient = ctx.createLinearGradient(0, gradientStartY, 0, canvas.height)
-      gradient.addColorStop(0, 'rgba(0,0,0,0)')
-      gradient.addColorStop(1, 'rgba(0,0,0,0.70)')
-      ctx.fillStyle = gradient
-      ctx.fillRect(0, gradientStartY, canvas.width, canvas.height - gradientStartY)
-
-      // Рисуем текст
-      ctx.textAlign = 'center'
-      ctx.textBaseline = 'middle'
-
-      maxLines.forEach((line, i) => {
-        const y = canvas.height - totalTextHeight - paddingV + i * lineHeight + lineHeight / 2
-
-        // Чёрная обводка
-        ctx.strokeStyle = 'rgba(0,0,0,0.9)'
-        ctx.lineWidth = fontSize * 0.08
-        ctx.lineJoin = 'round'
-        ctx.strokeText(line, canvas.width / 2, y)
-
-        // Белый текст
-        ctx.fillStyle = '#ffffff'
-        ctx.fillText(line, canvas.width / 2, y)
-      })
-
-      // Экспортируем как base64
-      const resultBase64 = canvas.toDataURL('image/jpeg', 0.92).split(',')[1]
-      resolve({ imageBase64: resultBase64, mimeType: 'image/jpeg' })
-    }
-    img.onerror = () => resolve({ imageBase64, mimeType }) // fallback
-    img.src = `data:${mimeType};base64,${imageBase64}`
-  })
-}
 
 function notify(message, callback) {
   if (window.Telegram?.WebApp?.showAlert) {
@@ -377,14 +300,15 @@ export default function CreateAd() {
     }
   }
 
-  async function generateImageAI() {
-    if (!form.productDesc && !form.imagePrompt) return
-
-    const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 90000)
-
+   async function generateImageAI() {
+    if (!form.productDesc && !form.imagePrompt) {
+      notify('Заполните описание продукта')
+      return
+    }
+  
     setGeneratingImage(true)
     try {
+      // Шаг 1: запускаем генерацию
       const fd = new FormData()
       fd.append('prompt', form.imagePrompt || '')
       fd.append('description', form.productDesc)
@@ -392,47 +316,60 @@ export default function CreateAd() {
       fd.append('text', form.text)
       fd.append('cta', form.cta || '')
       fd.append('geo', form.geo)
-      fd.append('adCategory', form.adCategory) // передаём выбранную категорию
+      fd.append('adCategory', form.adCategory)
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
-
+  
       const res = await fetch(`${API}/api/generate-image`, {
         method: 'POST',
         headers: getAuthHeaders(),
-        body: fd,
-        signal: controller.signal
+        body: fd
       })
-
-      const data = await res.json()
-      if (!res.ok) throw new Error(data?.error || t('create.notify.ai_image_fail'))
-
-      // Creatomate уже наложил текст — используем картинку напрямую
-      const imageBase64 = data.imageBase64
-      const finalMime = data.mimeType || 'image/jpeg'
-
-      const file = base64ToFile(imageBase64, finalMime, 'ai-creative.jpg')
-      const previewUrl = `data:${finalMime};base64,${imageBase64}`
-
-      // Добавляем к существующим (макс 3)
-      setGeneratedImages(prev => {
-        const next = [...prev, previewUrl].slice(-3)
-        setSelectedImageIndex(next.length - 1)
-        return next
-      })
-
-      update('image', file)
-      update('imagePreview', previewUrl)
-      update('mediaType', 'image')
-      update('mediaName', 'ai-creative.png')
-
-      if (!form.imagePrompt && data.revisedPrompt) update('imagePrompt', data.revisedPrompt)
-
+  
+      let data
+      try { data = await res.json() }
+      catch { throw new Error('Сервер недоступен (504). Попробуй ещё раз.') }
+  
+      if (!res.ok) throw new Error(data?.error || 'Ошибка генерации')
+      
+      const { renderId } = data
+  
+      // Шаг 2: polling статуса каждые 4 сек
+      for (let i = 0; i < 25; i++) {
+        await new Promise(r => setTimeout(r, 4000))
+        
+        const statusRes = await fetch(`${API}/api/render-status?renderId=${renderId}`, {
+          headers: getAuthHeaders()
+        })
+        const statusData = await statusRes.json()
+  
+        if (statusData.status === 'done') {
+          const { imageBase64, mimeType: finalMime } = statusData
+          const file = base64ToFile(imageBase64, finalMime, 'ai-creative.jpg')
+          const previewUrl = `data:${finalMime};base64,${imageBase64}`
+  
+          setGeneratedImages(prev => {
+            const next = [...prev, previewUrl].slice(-3)
+            setSelectedImageIndex(next.length - 1)
+            return next
+          })
+          update('image', file)
+          update('imagePreview', previewUrl)
+          update('mediaType', 'image')
+          update('mediaName', 'ai-creative.jpg')
+          return
+        }
+  
+        if (statusData.status === 'failed') {
+          throw new Error(statusData.error || 'Рендер не удался')
+        }
+        // 'processing' — продолжаем ждать
+      }
+  
+      throw new Error('Timeout: картинка генерируется слишком долго')
+  
     } catch (error) {
-      const message = error?.name === 'AbortError'
-        ? t('create.notify.ai_image_timeout')
-        : (error?.message || t('create.notify.ai_image_fail'))
-      notify(message)
+      notify(error.message || 'Ошибка генерации картинки')
     } finally {
-      clearTimeout(timeoutId)
       setGeneratingImage(false)
     }
   }
