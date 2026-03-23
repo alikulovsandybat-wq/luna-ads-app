@@ -318,6 +318,7 @@ export default function CreateAd() {
     productDesc: '',
     headline: '',
     text: '',
+    cta: '',           // текст кнопки для Creatomate
     imagePrompt: '',
     image: null,
     imagePreview: null,
@@ -360,6 +361,7 @@ export default function CreateAd() {
 
       update('headline', data.headline)
       update('text', data.text)
+      if (data.cta) update('cta', data.cta)
       if (data.interests?.length) {
         update('aiInterests', data.interests)
         update('interests', data.interests.join(', '))
@@ -388,6 +390,7 @@ export default function CreateAd() {
       fd.append('description', form.productDesc)
       fd.append('headline', form.headline)
       fd.append('text', form.text)
+      fd.append('cta', form.cta || '')
       fd.append('geo', form.geo)
       fd.append('adCategory', form.adCategory) // передаём выбранную категорию
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
@@ -712,22 +715,22 @@ export default function CreateAd() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button className={styles.aiBtn}
                 onClick={generateImageAI}
-                disabled={generatingImage || (!form.productDesc && !form.imagePrompt)}
-                style={{ flex: 1, position: 'relative' }}>
+                disabled={generatingImage}
+                style={{ flex: 1, position: 'relative', opacity: generatingImage ? 0.8 : 1 }}>
                 {generatingImage ? (
                   <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
                     <span style={{
                       width: 16, height: 16, borderRadius: '50%',
-                      border: '2px solid rgba(255,255,255,0.3)',
+                      border: '2px solid rgba(255,255,255,0.4)',
                       borderTopColor: '#fff',
                       animation: 'spin 0.8s linear infinite',
                       display: 'inline-block', flexShrink: 0
                     }} />
-                    {t('create.ai_image_loading')}
+                    Создаю креатив...
                   </span>
-                ) : generatedImages.length > 0
-                  ? '🔄 Перегенерировать'
-                  : t('create.ai_image')}
+                ) : (
+                  '🎨 Создать картинку с текстом'
+                )}
               </button>
             </div>
             <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
