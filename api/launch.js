@@ -99,7 +99,7 @@ export default async function handler(req, res) {
       targeting.flexible_spec = [{ interests: interestTargeting }]
     }
 
-        const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
+      const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
       name: `Группа — ${geo} ${ageMin}-${ageMax}`,
       campaign_id: campaignId,
       billing_event: 'IMPRESSIONS',
@@ -107,6 +107,7 @@ export default async function handler(req, res) {
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       daily_budget: Math.round(parseFloat(budget) * 100),
       targeting,
+      targeting_automation: { advantage_audience: 0 }, // ← добавь эту строку
       status: 'ACTIVE'
     })
 
