@@ -22,8 +22,8 @@ const TEMPLATES = {
     buildModifications: (imageUrl, headline, bodyText, cta) => ({
       'Image': imageUrl,
       'Headline': headline || '',
-      'Text-6J6': bodyText || '',
-      'Text-HPB': cta || '',
+      'Text-6J6': bodyText || '',   // текст тела объявления
+      'Text-HPB': '',               // можно использовать для CTA
     })
   },
   premium: {
@@ -165,11 +165,12 @@ export default async function handler(req, res) {
     const headline       = fields.headline?.[0]      || ''
     const bodyText       = fields.text?.[0]          || ''
     const promptText     = fields.prompt?.[0]        || ''
+    const adCategory     = fields.adCategory?.[0]    || 'universal'
     const referenceImage = files.reference_image?.[0]
 
-    // 1. Определяем шаблон
-    const template = detectTemplate(description)
-    console.log(`Template: ${template.name} for: "${description}"`)
+    // Используем категорию выбранную пользователем
+    const template = TEMPLATES[adCategory] || TEMPLATES.universal
+    console.log(`Template: ${template.name}, category: ${adCategory}`)
 
     // 2. Генерируем фото через DALL-E
     let imageBuffer
