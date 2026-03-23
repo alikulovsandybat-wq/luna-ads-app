@@ -270,6 +270,38 @@ export default function CreateAd() {
     { id: 'ai', label: t('create.creative.ai.label'), helper: t('create.creative.ai.helper') }
   ]
 
+  // Категории рекламы для выбора шаблона Creatomate
+  const adCategories = [
+    {
+      id: 'saas',
+      icon: '💻',
+      label: 'SaaS / Бизнес',
+      hint: 'Приложения, сервисы, B2B, авто, недвижимость',
+      color: '#007AFF'
+    },
+    {
+      id: 'ecommerce',
+      icon: '🛍️',
+      label: 'E-commerce',
+      hint: 'Одежда, косметика, товары, магазины',
+      color: '#f59e0b'
+    },
+    {
+      id: 'premium',
+      icon: '✨',
+      label: 'Премиум / Обучение',
+      hint: 'Курсы, коучинг, психологи, блогеры, эксперты',
+      color: '#7c3aed'
+    },
+    {
+      id: 'universal',
+      icon: '🎯',
+      label: 'Универсальный',
+      hint: 'Подходит для любой ниши',
+      color: '#059669'
+    },
+  ]
+
   const ctaTypes = [
     { id: 'MESSAGE_PAGE', label: t('create.cta.message') },
     { id: 'WHATSAPP_MESSAGE', label: t('create.cta.whatsapp') },
@@ -295,7 +327,8 @@ export default function CreateAd() {
     ctaType: 'MESSAGE_PAGE',
     whatsappNumber: '',
     ctaUrl: '',
-    aiInterests: []
+    aiInterests: [],
+    adCategory: 'universal' // категория для выбора шаблона Creatomate
   })
 
   function update(key, val) {
@@ -356,6 +389,7 @@ export default function CreateAd() {
       fd.append('headline', form.headline)
       fd.append('text', form.text)
       fd.append('geo', form.geo)
+      fd.append('adCategory', form.adCategory) // передаём выбранную категорию
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
 
       const res = await fetch(`${API}/api/generate-image`, {
@@ -643,6 +677,36 @@ export default function CreateAd() {
                 onSelect={handleCarouselSelect}
               />
             )}
+
+            <Field label="Категория рекламы">
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                {adCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => update('adCategory', cat.id)}
+                    style={{
+                      padding: '12px 10px', borderRadius: 12, cursor: 'pointer',
+                      border: `2px solid ${form.adCategory === cat.id ? cat.color : 'var(--border)'}`,
+                      background: form.adCategory === cat.id ? cat.color + '12' : 'var(--card)',
+                      textAlign: 'left', transition: 'all 0.2s',
+                      boxShadow: form.adCategory === cat.id ? `0 2px 8px ${cat.color}33` : 'none'
+                    }}
+                  >
+                    <div style={{ fontSize: 20, marginBottom: 4 }}>{cat.icon}</div>
+                    <div style={{
+                      fontSize: 12, fontWeight: 700,
+                      color: form.adCategory === cat.id ? cat.color : 'var(--text)'
+                    }}>
+                      {cat.label}
+                    </div>
+                    <div style={{ fontSize: 10, color: 'var(--text3)', marginTop: 2, lineHeight: 1.3 }}>
+                      {cat.hint}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </Field>
 
             <Field label={t('create.field_image_prompt')}>
               <textarea className={styles.textarea} value={form.imagePrompt}
