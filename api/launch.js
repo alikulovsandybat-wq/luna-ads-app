@@ -89,14 +89,11 @@ export default async function handler(req, res) {
 
     // ── Step 3: Create Ad Set ──
     const countryCode = geoToCountry(geo)
-    const targeting = {
+      const targeting = {
       geo_locations: { countries: [countryCode] },
       age_min: parseInt(ageMin),
       age_max: parseInt(ageMax),
-    }
-    // Only add interests if we resolved at least one
-    if (interestTargeting.length > 0) {
-      targeting.flexible_spec = [{ interests: interestTargeting }]
+      targeting_automation: { advantage_audience: 0 }, // ← переноси СЮДА
     }
 
       const adSetRes = await fbPost(`/${adAccountId}/adsets`, token, {
@@ -107,7 +104,6 @@ export default async function handler(req, res) {
       bid_strategy: 'LOWEST_COST_WITHOUT_CAP',
       daily_budget: Math.round(parseFloat(budget) * 100),
       targeting,
-      targeting_automation: { advantage_audience: 0 }, // ← добавь эту строку
       status: 'ACTIVE'
     })
 
