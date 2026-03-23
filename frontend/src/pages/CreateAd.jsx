@@ -719,15 +719,25 @@ export default function CreateAd() {
             <div style={{ display: 'flex', gap: 8 }}>
               <button className={styles.aiBtn}
                 onClick={generateImageAI}
-                disabled={generatingImage || (!form.productDesc && !form.imagePrompt)}
-                style={{ flex: 1 }}>
-                {generatingImage
-                  ? t('create.ai_image_loading')
-                  : generatedImages.length > 0
-                    ? '🔄 Перегенерировать'
-                    : t('create.ai_image')}
+                disabled={generatingImage || (generatedImages.length === 0 && !form.productDesc && !form.imagePrompt)}
+                style={{ flex: 1, position: 'relative' }}>
+                {generatingImage ? (
+                  <span style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>
+                    <span style={{
+                      width: 16, height: 16, borderRadius: '50%',
+                      border: '2px solid rgba(255,255,255,0.3)',
+                      borderTopColor: '#fff',
+                      animation: 'spin 0.8s linear infinite',
+                      display: 'inline-block', flexShrink: 0
+                    }} />
+                    {t('create.ai_image_loading')}
+                  </span>
+                ) : generatedImages.length > 0
+                  ? '🔄 Перегенерировать'
+                  : t('create.ai_image')}
               </button>
             </div>
+            <style>{`@keyframes spin { to { transform: rotate(360deg) } }`}</style>
 
             <div className={styles.sectionTitle}>{t('create.section_cta')}</div>
             <div className={styles.ctaRow}>
