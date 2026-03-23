@@ -48,24 +48,21 @@ export default async function handler(req, res) {
     }
 
     // ОБНОВЛЕННЫЙ ПРОМПТ: Твой "зубастый" и элитный стиль
-    const prompt = `Ты — топовый креативный директор и эксперт по рекламе. Твоя задача — создать текст для рекламы в Instagram/Facebook.
-
-ДАННЫЕ:
-- Продукт: ${description}
-- Локация: ${geo || 'Казахстан'}
-
-ТВОЙ СТИЛЬ:
-- Элитный, чистый, "человечный" язык. 
-- Никакого "рекламного пластика" и заезженных фраз типа "лучшее предложение".
-- Пиши коротко, емко, "зубасто" и по делу.
-
-ЗАДАЧА:
-1. headline: Короткий цепляющий заголовок до 40 символов. Это то, что Sharp наложит на картинку.
-2. text: Основной текст поста (2-3 предложения), который бьет в боль или выгоду клиента.
-3. interests: 5-8 точных интересов для таргета на английском языке.
-
-Верни только чистый JSON:
-{"headline":"...","text":"...","interests":["..."]}`
+      const prompt = `You are a top-tier Creative Director and Ad Expert. Your style is elite, clean, and "human". No "ad speak" or clichés. Be sharp, punchy, and direct.
+    
+    DATA:
+    - Product: ${description}
+    - Location: ${geo || 'Global'}
+    
+    YOUR TASK:
+    1. Detect the user's language and respond in the SAME language.
+    2. headline: A catchy title (max 40 chars) for the image overlay.
+    3. text: Main ad body (2-3 sentences) focusing on pain points or benefits.
+    4. cta: A short Call-to-Action for a button (max 15 chars), e.g., "Shop Now", "Get Started".
+    5. interests: 5-8 precise targeting interests in English.
+    
+    Return ONLY pure JSON:
+    {"headline":"...", "text":"...", "cta":"...", "interests":["..."]}`;
 
     const model = process.env.OPENAI_TEXT_MODEL || 'gpt-4o' // Используем мощную модель для качества
     const aiRes = await fetchWithTimeout('https://api.openai.com/v1/chat/completions', {
