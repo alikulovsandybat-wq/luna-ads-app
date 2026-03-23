@@ -27,10 +27,6 @@
     {
       "source": "/create",
       "destination": "/index.html"
-    },
-    {
-      "source": "/profile",
-      "destination": "/index.html"
     }
   ],
   "headers": [
@@ -52,6 +48,17 @@
       ]
     }
   ],
+  "functions": {
+    "api/generate-image.js": {
+      "maxDuration": 60
+    },
+    "api/generate.js": {
+      "maxDuration": 30
+    },
+    "api/launch.js": {
+      "maxDuration": 30
+    }
+  },
   "crons": [
     {
       "path": "/api/cron/daily-report",
