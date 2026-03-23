@@ -5,33 +5,26 @@ import { useI18n } from '../i18n'
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// Вспомогательная функция
 function base64ToFile(base64, mimeType, fileName) {
   const binary = atob(base64)
   const bytes = new Uint8Array(binary.length)
-  for (let i = 0; i < binary.length; i += 1) {
-    bytes[i] = binary.charCodeAt(i)
-  }
+  for (let i = 0; i < binary.length; i += 1) { bytes[i] = binary.charCodeAt(i) }
   return new File([bytes], fileName, { type: mimeType })
 }
 
 function notify(message, callback) {
   const tg = window.Telegram?.WebApp;
-  if (tg?.initData && typeof tg.showAlert === 'function') {
-    try {
-      tg.showAlert(message, callback);
-      return;
-    } catch (e) {
-      console.warn("Telegram showAlert failed", e);
-    }
-  }
+  if (tg?.initData && typeof tg.showAlert === 'function') { try { tg.showAlert(message, callback); return; } catch (e) { } }
   window.alert(message);
   callback?.();
 }
 
+// ── Модальное окно успеха ──
 function SuccessModal({ onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
-      <div style={{ background: 'var(--card)', borderRadius: 24, padding: '36px 28px', textAlign: 'center', maxWidth: 340, width: '100%', border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
+      <div style={{ background: 'var(--card)', borderRadius: 24, padding: '36px 28px', textAlign: 'center', maxWidth: 340, border: '1px solid var(--border)', boxShadow: '0 24px 60px rgba(0,0,0,0.2)' }}>
         <div style={{ width: 72, height: 72, borderRadius: '50%', background: 'linear-gradient(135deg, #22c55e, #16a34a)', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 20px', animation: 'popIn 0.4s' }}>
           <svg width="36" height="36" viewBox="0 0 36 36" fill="none"><path d="M8 18L15 25L28 11" stroke="white" strokeWidth="3.5" strokeLinecap="round" strokeLinejoin="round" /></svg>
         </div>
@@ -42,6 +35,7 @@ function SuccessModal({ onClose }) {
   )
 }
 
+// ── Карусель картинок ──
 function ImageCarousel({ images, selectedIndex, onSelect }) {
   const [current, setCurrent] = useState(selectedIndex || 0)
   const move = (dir) => { const n = (current + dir + images.length) % images.length; setCurrent(n); onSelect(n); }
@@ -75,6 +69,14 @@ export default function CreateAd() {
   const [generatedImages, setGeneratedImages] = useState([])
   const [selectedIdx, setSelectedIdx] = useState(0)
 
+  // Категории рекламы для выбора шаблона (вернул этот массив!)
+  const adCategories = [
+    { id: 'saas', icon: '💻', label: 'SaaS / Бизнес', hint: 'B2B, авто, недвижимость', color: '#007AFF' },
+    { id: 'ecommerce', icon: '🛍️', label: 'E-commerce', hint: 'Товары, магазины', color: '#f59e0b' },
+    { id: 'premium', icon: '✨', label: 'Премиум / Обучение', hint: 'Курсы, эксперты', color: '#7c3aed' },
+    { id: 'universal', icon: '🎯', label: 'Универсальный', hint: 'Подходит для любой ниши', color: '#059669' },
+  ]
+
   const [form, setForm] = useState({
     budget: '10', geo: '', ageMin: '18', ageMax: '45', interests: '', productDesc: '', headline: '', text: '',
     ctaType: 'MESSAGE_PAGE', whatsappNumber: '', ctaUrl: '', aiInterests: [], image: null, imagePreview: null, mediaType: null, creativeType: 'photo', adCategory: 'universal'
@@ -101,7 +103,9 @@ export default function CreateAd() {
     setLoading(l => ({ ...l, image: true }))
     try {
       const fd = new FormData()
-      fd.append('description', form.productDesc); fd.append('headline', form.headline); fd.append('adCategory', form.adCategory)
+      fd.append('description', form.productDesc); fd.append('headline', form.headline);
+      // Важно: Отправляем выбранную категорию!
+      fd.append('adCategory', form.adCategory)
       if (form.image && form.mediaType !== 'video') fd.append('reference_image', form.image)
       
       const res = await fetch(`${API}/api/generate-image`, { method: 'POST', headers: getHeaders(), body: fd })
@@ -147,8 +151,8 @@ export default function CreateAd() {
       <div className={styles.header}><h1>{t('create.title')}</h1></div>
       
       <div className={styles.steps}>
-        {[0,1,2,3].map(i => (
-          <div key={i} className={`${styles.step} ${step === i ? styles.stepActive : ''} ${i < step ? styles.stepDone : ''}`}>
+        {[t('create.step.budget_geo'), t('create.step.audience'), t('create.step.creative'), t('create.step.launch')].map((s, i) => (
+          <div key={i} className={`${styles.step} ${i === step ? styles.stepActive : ''} ${i < step ? styles.stepDone : ''}`}>
             <div className={styles.stepDot}>{i < step ? '✓' : i + 1}</div>
           </div>
         ))}
@@ -197,6 +201,29 @@ export default function CreateAd() {
 
             {generatedImages.length > 0 && form.mediaType !== 'video' && <ImageCarousel images={generatedImages} selectedIndex={selectedIdx} onSelect={idx => update('imagePreview', generatedImages[idx])} />}
 
+            {/* Восстановленный блок выбора категорий рекламы */}
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, margin: '16px 0' }}>
+              {adCategories.map(cat => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => update('adCategory', cat.id)}
+                  style={{
+                    padding: '10px',
+                    borderRadius: 12,
+                    border: `2px solid ${form.adCategory === cat.id ? cat.color : 'var(--border)'}`,
+                    background: form.adCategory === cat.id ? cat.color + '10' : 'var(--card)',
+                    cursor: 'pointer'
+                  }}
+                >
+                  <div style={{ fontSize: 18 }}>{cat.icon}</div>
+                  <div style={{ fontSize: 11, fontWeight: 700, color: form.adCategory === cat.id ? cat.color : 'var(--text)' }}>{cat.label}</div>
+                  <div style={{ fontSize: 9, color: 'var(--text3)' }}>{cat.hint}</div>
+                </button>
+              ))}
+            </div>
+
+            <Field label="Промпт для картинки"><textarea className={styles.textarea} value={form.imagePrompt} onChange={e => update('imagePrompt', e.target.value)} rows={2} /></Field>
             <button className={styles.aiBtn} onClick={handleGenerateImage} disabled={loading.image} style={{ background: '#000', color: '#fff' }}>{loading.image ? '🎨 Рисую...' : '🎨 Создать ИИ-креатив'}</button>
 
             <div className={styles.ctaRow}>
@@ -213,6 +240,7 @@ export default function CreateAd() {
             <div className={styles.summary}>
               <SummaryRow label="Бюджет" value={`$${form.budget}`} />
               <SummaryRow label="Гео" value={form.geo} />
+              <SummaryRow label="Категория" value={form.adCategory} />
               <SummaryRow label="Кнопка" value={form.ctaType} />
             </div>
             <button className={styles.launchBtn} onClick={handleLaunch} disabled={loading.launch}>{loading.launch ? '🚀...' : '🚀 Запустить рекламу'}</button>
