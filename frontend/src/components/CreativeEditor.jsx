@@ -79,9 +79,10 @@ export default function CreativeEditor({ imageUrl, rawImageFile, headline, subte
   const [photoroomMode, setPhotoroomMode] = useState('beautify')
 
   function getAuthHeaders() {
+    const tg = window.Telegram?.WebApp
     return {
-      'x-tg-data': window.Telegram?.WebApp?.initData || '',
-      'x-tg-userid': localStorage.getItem('luna_tg_userid') || ''
+      'x-tg-data': tg?.initData || '',
+      'x-tg-userid': tg?.initDataUnsafe?.user?.id?.toString() || ''
     }
   }
 

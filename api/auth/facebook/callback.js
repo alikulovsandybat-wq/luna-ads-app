@@ -33,7 +33,7 @@ export default async function handler(req, res) {
     )
     const meData = await meRes.json()
 
-    // 3. Получаем ВСЕ рекламные аккаунты
+    // 3. Получаем рекламные аккаунты
     const accountsRes = await fetch(
       `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_status&access_token=${accessToken}`
     )
@@ -41,7 +41,7 @@ export default async function handler(req, res) {
     const adAccounts = accountsData.data || []
     const primaryAdAccountId = adAccounts[0]?.id || null
 
-    // 4. Сохраняем в Supabase — токен + все аккаунты
+    // 4. Сохраняем в Supabase
     await supabase.from('users').upsert({
       tg_user_id: String(tgUserId),
       fb_access_token: accessToken,
@@ -54,8 +54,10 @@ export default async function handler(req, res) {
       updated_at: new Date().toISOString()
     }, { onConflict: 'tg_user_id' })
 
-    // 5. Показываем страницу-мост которая сама закрывается и открывает Telegram
+    // 5. Показываем страницу-мост
     const botUsername = process.env.TELEGRAM_BOT_USERNAME || 'tvoymarketolog_bot'
+    const appUrl = `https://t.me/${botUsername}/app?startapp=fb_token_ok`
+    
     res.setHeader('Content-Type', 'text/html')
     res.send(`<!DOCTYPE html>
 <html>
@@ -64,26 +66,27 @@ export default async function handler(req, res) {
   <title>Luna Ads — авторизация</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <style>
-    body { font-family: -apple-system, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #F9FAFB; }
-    .box { text-align: center; padding: 32px; }
-    .emoji { font-size: 48px; }
-    h2 { color: #111; margin: 16px 0 8px; }
-    p { color: #666; margin: 0 0 24px; }
-    a { display: inline-block; background: #007AFF; color: white; padding: 12px 24px; border-radius: 12px; text-decoration: none; font-weight: 600; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; display: flex; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #F9FAFB; }
+    .box { text-align: center; padding: 32px; background: white; border-radius: 24px; box-shadow: 0 4px 24px rgba(0,0,0,0.05); max-width: 320px; width: 90%; }
+    .emoji { font-size: 64px; margin-bottom: 16px; }
+    h2 { color: #111; margin: 0 0 8px; font-size: 22px; }
+    p { color: #666; margin: 0 0 24px; line-height: 1.4; }
+    .btn { display: inline-block; background: #007AFF; color: white; padding: 14px 28px; border-radius: 14px; text-decoration: none; font-weight: 600; transition: background 0.2s; }
+    .btn:active { background: #0056B3; }
   </style>
 </head>
 <body>
   <div class="box">
     <div class="emoji">✅</div>
-    <h2>Facebook подключён!</h2>
-    <p>Возвращаемся в Luna Ads...</p>
-    <a href="https://t.me/${botUsername}/app">Открыть Luna Ads</a>
+    <h2>Почти готово!</h2>
+    <p>Facebook успешно подключен. Теперь вернитесь в Telegram, чтобы продолжить работу.</p>
+    <a href="${appUrl}" class="btn">Вернуться в Luna Ads</a>
   </div>
   <script>
-    // Пробуем автоматически вернуть в Telegram
+    // Пытаемся автоматически перенаправить
     setTimeout(() => {
-      window.location.href = 'https://t.me/${botUsername}/app';
-    }, 1500);
+      window.location.href = "${appUrl}";
+    }, 2000);
   </script>
 </body>
 </html>`)

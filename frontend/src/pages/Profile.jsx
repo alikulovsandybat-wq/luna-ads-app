@@ -4,7 +4,6 @@ import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const API = import.meta.env.VITE_API_URL || ''
 
-// ── Замени эти ссылки на реальные из LemonSqueezy после создания продуктов ──
 const CHECKOUT_URLS = {
   starter:   'https://lunatargetapp.lemonsqueezy.com/checkout/buy/88687c18-b8ff-4eba-b8c9-09a97cb23028',
   autopilot: 'https://lunatargetapp.lemonsqueezy.com/checkout/buy/aa31b431-01f2-4b67-94e4-bdf52aceb43d',
@@ -74,7 +73,7 @@ export default function Profile() {
     try {
       const WebApp = window.Telegram?.WebApp
       const tgData = WebApp?.initData || ''
-      const userId = localStorage.getItem('luna_tg_userid') || ''
+      const userId = WebApp?.initDataUnsafe?.user?.id?.toString() || ''
       const tgUser = WebApp?.initDataUnsafe?.user
 
       const res = await fetch(`${API}/api/profile`, {
@@ -89,7 +88,7 @@ export default function Profile() {
         setProfile({
           name: tgUser ? `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim() : null,
           username: tgUser?.username || '',
-          tg_user_id: userId || tgUser?.id || '—',
+          tg_user_id: userId || '—',
           ad_account_id: '—',
           email: null,
           plan: 'autopilot',
@@ -99,7 +98,7 @@ export default function Profile() {
     } catch {
       const WebApp = window.Telegram?.WebApp
       const tgUser = WebApp?.initDataUnsafe?.user
-      const userId = localStorage.getItem('luna_tg_userid') || ''
+      const userId = WebApp?.initDataUnsafe?.user?.id?.toString() || ''
       setProfile({
         name: tgUser ? `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim() : null,
         username: tgUser?.username || '',
@@ -115,10 +114,17 @@ export default function Profile() {
 
   function handlePayment(planId) {
     const userId = profile?.tg_user_id || ''
-    // Передаём tg_user_id как custom data в URL чтобы вебхук знал кому активировать подписку
     const baseUrl = CHECKOUT_URLS[planId]
     const url = `${baseUrl}?checkout[custom][tg_user_id]=${userId}&checkout[custom][months]=1`
     window.Telegram?.WebApp?.openLink(url) || window.open(url, '_blank')
+  }
+
+  async function handleDisconnect() {
+    if (!window.confirm(t('profile.disconnect_confirm') || 'Вы уверены, что хотите отключить Facebook?')) return
+    
+    // В идеале тут должен быть запрос на бэкенд для удаления токена
+    // Но пока просто перенаправляем на коннект, так как App.jsx все равно проверит статус
+    window.location.href = '/connect'
   }
 
   if (loading) return (
@@ -135,7 +141,6 @@ export default function Profile() {
   return (
     <div style={{ padding: '20px 16px 100px', fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
-      {/* Заголовок */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#007AFF', letterSpacing: -0.5 }}>
           {t('profile.title')}
@@ -143,7 +148,6 @@ export default function Profile() {
         <LanguageSwitcher />
       </div>
 
-      {/* Карточка пользователя */}
       <div style={{
         background: 'var(--card)', border: '1px solid var(--border)',
         borderRadius: 20, padding: '20px', marginBottom: 16
@@ -185,7 +189,6 @@ export default function Profile() {
           </div>
         ))}
 
-        {/* Тариф + статус */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
           <span style={{ fontSize: 13, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
             💎 {t('profile.plan_label')}
@@ -207,7 +210,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Промобанер ProductHunt */}
       <div style={{
         background: 'linear-gradient(135deg, #ff6154 0%, #ff8c00 100%)',
         borderRadius: 16, padding: '14px 16px', marginBottom: 16,
@@ -224,7 +226,6 @@ export default function Profile() {
         </div>
       </div>
 
-      {/* Тарифные планы */}
       <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>
         {t('profile.plans_title')}
       </div>
@@ -302,12 +303,7 @@ export default function Profile() {
         })}
       </div>
 
-      {/* Кнопка выхода */}
-      <button onClick={() => {
-        localStorage.removeItem('fb_connected')
-        localStorage.removeItem('fb_token')
-        window.location.href = '/connect'
-      }} style={{
+      <button onClick={handleDisconnect} style={{
         width: '100%', marginTop: 24, padding: '14px', borderRadius: 12,
         border: '1px solid var(--border)', background: 'transparent',
         color: '#ef4444', fontSize: 14, fontWeight: 600,
