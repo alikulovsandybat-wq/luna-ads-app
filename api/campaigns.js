@@ -24,7 +24,7 @@ export default async function handler(req, res) {
     if (!user?.fb_access_token) return res.status(401).json({ error: 'No token' })
 
     // Get campaigns with insights
-    const url = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/campaigns?` + new URLSearchParams({
+    const url = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/campaigns?` + new URLSearchParams({
       fields: 'id,name,status,created_time,daily_budget,insights{spend,actions,impressions}',
       limit: 20,
       access_token: user.fb_access_token

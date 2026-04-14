@@ -28,14 +28,14 @@ export default async function handler(req, res) {
     const until = getDateBefore(0)
 
     // ── Fetch 1: Total summary stats ──
-    const summaryUrl = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+    const summaryUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
       fields: 'spend,impressions,reach,clicks,actions',
       time_range: JSON.stringify({ since, until }),
       access_token: user.fb_access_token
     })
 
     // ── Fetch 2: Daily breakdown for chart ──
-    const dailyUrl = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+    const dailyUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
       fields: 'spend,impressions,reach,clicks',
       time_range: JSON.stringify({ since, until }),
       time_increment: '1',
@@ -43,7 +43,7 @@ export default async function handler(req, res) {
     })
 
     // ── Fetch 3: Platform breakdown (Facebook vs Instagram) ──
-    const platformUrl = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+    const platformUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
       fields: 'impressions,reach,spend',
       time_range: JSON.stringify({ since, until }),
       breakdowns: 'publisher_platform',

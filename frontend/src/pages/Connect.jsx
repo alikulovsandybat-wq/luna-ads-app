@@ -12,30 +12,38 @@ export default function Connect({ onConnect }) {
   const { t } = useI18n()
 
   useEffect(() => {
-  const params = new URLSearchParams(window.location.search)
-  const token = params.get('fb_token')
-  const tgUserId = params.get('state') // Обычно state — это наш tgUserId (tg_userid_hash)
+    const params = new URLSearchParams(window.location.search)
+    const token = params.get('fb_token')
+    // Поддерживаем оба варианта параметра
+    const tgUserId = params.get('tg_user_id') || params.get('state')
 
-  if (token && tgUserId) {
-    localStorage.setItem('fb_connected', '1')
-    localStorage.setItem('fb_token', token)
-    // НОВЫЙ БЛОК: Запоминаем tgUserId, чтобы использовать его в Safari
-    localStorage.setItem('luna_tg_userid', tgUserId) 
+    if (token === 'ok' && tgUserId) {
+      localStorage.setItem('fb_connected', '1')
+      localStorage.setItem('fb_token', token)
+      localStorage.setItem('luna_tg_userid', tgUserId)
 
-    onConnect()
-    navigate('/')
-  }
-}, [navigate, onConnect])
+      // Чистим URL чтобы не было повторного срабатывания
+      window.history.replaceState({}, '', '/')
+
+      onConnect()
+      navigate('/')
+    }
+  }, [navigate, onConnect])
 
   function connectFacebook() {
-    const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id || 'dev'
+    const tg = window.Telegram?.WebApp
+    const tgUserId = tg?.initDataUnsafe?.user?.id || localStorage.getItem('luna_tg_userid') || 'dev'
     const redirectUri = `${API}/api/auth/facebook/callback`
     const scope = 'ads_management,ads_read,business_management'
     const state = tgUserId
 
-    const url = `https://www.facebook.com/v18.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}&response_type=code`
+    const url = `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&scope=${scope}&state=${state}&response_type=code`
 
-    window.Telegram?.WebApp?.openLink(url)
+    if (tg?.openLink) {
+      tg.openLink(url, { try_instant_view: false })
+    } else {
+      window.open(url, '_blank')
+    }
   }
 
   const features = [

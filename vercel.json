@@ -52,7 +52,9 @@
     "api/generate-image.js": { "maxDuration": 60 },
     "api/render-status.js":  { "maxDuration": 10 },
     "api/generate.js":       { "maxDuration": 30 },
-    "api/launch.js":         { "maxDuration": 30 }
+    "api/launch.js":         { "maxDuration": 30 },
+    "api/geo-search.js":     { "maxDuration": 10 },
+    "api/photoroom.js":      { "maxDuration": 30 }
   },
   "crons": [
     {

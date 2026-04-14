@@ -13,7 +13,7 @@ export default async function handler(req, res) {
 
   try {
     // 1. Меняем code на токен
-    const tokenRes = await fetch('https://graph.facebook.com/v18.0/oauth/access_token?' + new URLSearchParams({
+    const tokenRes = await fetch('https://graph.facebook.com/v21.0/oauth/access_token?' + new URLSearchParams({
       client_id: process.env.FB_APP_ID,
       client_secret: process.env.FB_APP_SECRET,
       redirect_uri: `${process.env.APP_URL}/api/auth/facebook/callback`,
@@ -29,13 +29,13 @@ export default async function handler(req, res) {
 
     // 2. Получаем данные пользователя FB
     const meRes = await fetch(
-      `https://graph.facebook.com/v18.0/me?fields=id,name,email&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/me?fields=id,name,email&access_token=${accessToken}`
     )
     const meData = await meRes.json()
 
     // 3. Получаем ВСЕ рекламные аккаунты
     const accountsRes = await fetch(
-      `https://graph.facebook.com/v18.0/me/adaccounts?fields=id,name,account_status&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_status&access_token=${accessToken}`
     )
     const accountsData = await accountsRes.json()
     const adAccounts = accountsData.data || []

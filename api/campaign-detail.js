@@ -29,7 +29,7 @@ export default async function handler(req, res) {
 
     const token = user.fb_access_token
 
-    const campaignUrl = `https://graph.facebook.com/v18.0/${campaignId}?` + new URLSearchParams({
+    const campaignUrl = `https://graph.facebook.com/v21.0/${campaignId}?` + new URLSearchParams({
       fields: 'id,name,status,objective,created_time,insights{spend,impressions,clicks,ctr,cpc,actions}',
       access_token: token
     })
@@ -52,7 +52,7 @@ export default async function handler(req, res) {
       ctr: insight.ctr ? `${parseFloat(insight.ctr).toFixed(2)}%` : '0%'
     }
 
-    const adsetUrl = `https://graph.facebook.com/v18.0/${campaignId}/adsets?` + new URLSearchParams({
+    const adsetUrl = `https://graph.facebook.com/v21.0/${campaignId}/adsets?` + new URLSearchParams({
       fields: 'id,name,daily_budget,targeting',
       limit: 1,
       access_token: token
@@ -61,7 +61,7 @@ export default async function handler(req, res) {
     const adsetData = await adsetRes.json()
     const adset = adsetData.data?.[0]
 
-    const insightsUrl = `https://graph.facebook.com/v18.0/${campaignId}/insights?` + new URLSearchParams({
+    const insightsUrl = `https://graph.facebook.com/v21.0/${campaignId}/insights?` + new URLSearchParams({
       fields: 'date_start,spend,actions,impressions,clicks',
       time_increment: 1,
       date_preset: 'last_30d',

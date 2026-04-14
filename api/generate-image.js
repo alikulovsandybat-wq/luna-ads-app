@@ -1,9 +1,9 @@
 import { OpenAI } from 'openai'
-import { getTgUserId, requireSubscription } from './_subscription.js'
+import { getTgUserId, requireSubscription, checkEndpointRateLimit } from './_subscription.js'
 import { createClient } from '@supabase/supabase-js'
 import { IncomingForm } from 'formidable'
 import fs from 'fs'
-import sharp from 'sharp' // 1. Импортируем sharp
+import sharp from 'sharp'
 
 export const config = { api: { bodyParser: false } }
 
@@ -75,6 +75,8 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).send('Method not allowed')
 
+  if (!checkEndpointRateLimit(req, res, 'generate-image')) return
+
   try {
     const tgUserId = getTgUserId(req)
     if (!tgUserId) return res.status(401).json({ error: 'Unauthorized' })
@@ -92,23 +94,27 @@ export default async function handler(req, res) {
     const adCategory = fields.adCategory?.[0] || 'universal'
     const referenceImage = files.reference_image?.[0]
     
+    // Fallback значения чтобы Creatomate никогда не получал undefined
+    const safeHeadline = headline || description.slice(0, 40) || 'Новинка'
+    const safeBodyText = bodyText || description || ''
+    const safeCtaText = ctaText || 'Подробнее'
+
     const template = TEMPLATES[adCategory] || TEMPLATES.universal
 
-    // 1. ГЕНЕРАЦИЯ В DALL-E (С УЧЕТОМ РЕФЕРЕНСА И SHARP)
+    // 1. ГЕНЕРАЦИЯ В DALL-E
     let imageBuffer
-    // Улучшенный промпт для DALL-E 3 ( Vogue style)
-    const dallePrompt = promptText || `Professional advertisement photo for: ${description}. Premium, high-end commercial advertising photography, studio lighting, soft shadows, 8k resolution, photorealistic, Vogue style, minimalist composition.`;
+    const dallePrompt = promptText || `Professional advertisement photo for: ${description || 'a premium product'}. Premium commercial photography, studio lighting, soft shadows, 8k resolution, photorealistic, Vogue style, minimalist composition.`
 
     if (referenceImage) {
-      // 2. Обработка референса через sharp для DALL-E 2 (Image-to-Image)
       const rawBuffer = fs.readFileSync(referenceImage.filepath)
-      // Конвертируем в PNG и добавляем альфа-канал, чтобы избежать ошибки RGBA
-      const processedBuffer = await sharp(rawBuffer).ensureAlpha().toBuffer()
+      const processedBuffer = await sharp(rawBuffer).ensureAlpha().toFormat('png').toBuffer()
       
       const formData = new FormData()
-      formData.append('model', 'dall-e-2') // DALL-E 2 нужен для edits/variations
+      formData.append('model', 'dall-e-2')
       formData.append('prompt', dallePrompt)
       formData.append('image', new Blob([processedBuffer], { type: 'image/png' }), 'ref.png')
+      formData.append('size', '1024x1024')
+      formData.append('response_format', 'b64_json')
       
       const editRes = await fetch('https://api.openai.com/v1/images/edits', {
         method: 'POST',
@@ -116,23 +122,29 @@ export default async function handler(req, res) {
         body: formData
       })
       const editData = await editRes.json()
-      if (!editData.data) throw new Error(editData.error?.message || 'DALL-E edit failed')
+      if (!editData.data?.[0]?.b64_json) throw new Error(editData.error?.message || 'DALL-E edit failed')
       imageBuffer = Buffer.from(editData.data[0].b64_json, 'base64')
     } else {
-      // 3. Обычная генерация через DALL-E 3 (если нет референса)
       const aiResponse = await openai.images.generate({
         model: 'dall-e-3',
         prompt: dallePrompt,
+        size: '1024x1024',
         response_format: 'b64_json'
       })
+      if (!aiResponse.data?.[0]?.b64_json) throw new Error('DALL-E 3 generation failed')
       imageBuffer = Buffer.from(aiResponse.data[0].b64_json, 'base64')
     }
 
-    // 2. ImgBB
+    // 2. Проверяем буфер перед загрузкой
+    if (!imageBuffer || imageBuffer.length === 0) {
+      throw new Error('Image generation failed: empty buffer')
+    }
+
+    // 3. ImgBB
     const imageUrl = await uploadToImgBB(imageBuffer)
 
-    // 3. Creatomate (запуск задачи)
-    const modifications = template.buildModifications(imageUrl, headline, bodyText, ctaText)
+    // 4. Creatomate
+    const modifications = template.buildModifications(imageUrl, safeHeadline, safeBodyText, safeCtaText)
     
     const creatomateRes = await fetch('https://api.creatomate.com/v1/renders', {
       method: 'POST',
@@ -150,16 +162,17 @@ export default async function handler(req, res) {
     const creatomateData = await creatomateRes.json()
     if (!creatomateRes.ok) throw new Error('Creatomate failed: ' + JSON.stringify(creatomateData))
     
-    const renderId = Array.isArray(creatomateData) ? creatomateData[0]?.id : creatomateData?.id
+    const renderArr = Array.isArray(creatomateData) ? creatomateData : [creatomateData]
+    const renderId = renderArr[0]?.id
+    if (!renderId) throw new Error('Creatomate: no render ID: ' + JSON.stringify(creatomateData))
 
-    // 4. Возвращаем renderId фронтенду
     return res.status(200).json({ 
       status: 'processing',
       renderId 
     })
 
   } catch (error) {
-    console.error('Error:', error)
+    console.error('generate-image error:', error)
     res.status(500).json({ error: error.message })
   }
 }

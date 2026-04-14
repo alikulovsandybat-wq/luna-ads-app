@@ -72,7 +72,7 @@ export default async function handler(req, res) {
 }
 
 async function getAdsetId(campaignId, token) {
-  const url = `https://graph.facebook.com/v18.0/${campaignId}/adsets?` + new URLSearchParams({
+  const url = `https://graph.facebook.com/v21.0/${campaignId}/adsets?` + new URLSearchParams({
     fields: 'id',
     limit: 1,
     access_token: token
@@ -89,7 +89,7 @@ async function resolveInterests(raw, token) {
 
   const results = []
   for (const name of list) {
-    const url = `https://graph.facebook.com/v18.0/search?` + new URLSearchParams({
+    const url = `https://graph.facebook.com/v21.0/search?` + new URLSearchParams({
       type: 'adinterest',
       q: name,
       limit: 1,
@@ -105,7 +105,7 @@ async function resolveInterests(raw, token) {
 }
 
 async function fbPost(path, token, body) {
-  const res = await fetch(`https://graph.facebook.com/v18.0${path}?access_token=${token}`, {
+  const res = await fetch(`https://graph.facebook.com/v21.0${path}?access_token=${token}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body)

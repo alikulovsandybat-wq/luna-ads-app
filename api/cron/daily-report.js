@@ -38,10 +38,26 @@ export default async function handler(req, res) {
 
     // 1. Отправляем отчёт каждому активному пользователю
     for (const user of activeUsers) {
-      if (!user.fb_access_token || !user.fb_ad_account_id) continue
+      if (!user.fb_access_token || !user.fb_ad_account_id) {
+        // Сообщаем пользователю что нужно переподключить FB
+        await sendMessage(user.tg_user_id,
+          `🌙 Luna Ads — отчёт за ${dateLabel}\n\n` +
+          `⚠️ Не удалось получить данные. Пожалуйста, переподключите Facebook в приложении.`
+        )
+        continue
+      }
 
       const stats = await fetchDailyStats(user, dateYmd)
-      if (!stats) continue
+      if (!stats) {
+        // Всё равно отправляем — но с предупреждением
+        await sendMessage(user.tg_user_id,
+          `🌙 Luna Ads — отчёт за ${dateLabel}\n\n` +
+          `ℹ️ Данных за вчера нет — возможно рекламные кампании не запускались или срок токена истёк.\n\n` +
+          `Откройте приложение чтобы проверить статус.`
+        )
+        results.push({ tg_user_id: user.tg_user_id, sent: true, note: 'no_stats' })
+        continue
+      }
 
       const message = buildUserReportMessage(dateLabel, stats)
       const sent = await sendMessage(user.tg_user_id, message)
@@ -125,12 +141,16 @@ function buildUserReportMessage(dateLabel, stats) {
   const spend = formatMoney(stats.spend, stats.currency)
   const cpl = stats.leads > 0 ? formatMoney(stats.cpl, stats.currency) : '—'
   const impressions = formatNumber(stats.impressions)
+  const reach = formatNumber(stats.reach || 0)
+  const clicks = formatNumber(stats.clicks || 0)
 
   const lines = [
-    `📊 Отчёт по рекламе за ${dateLabel}`,
+    `🌙 Luna Ads — отчёт за ${dateLabel}`,
     ``,
     `💰 Потрачено: ${spend}`,
     `👁 Показы: ${impressions}`,
+    `📡 Охват: ${reach}`,
+    `🖱 Клики: ${clicks}`,
     `🎯 Лиды: ${stats.leads}`,
     `📉 Цена за лид: ${cpl}`,
   ]
@@ -138,12 +158,13 @@ function buildUserReportMessage(dateLabel, stats) {
   if (stats.leads === 0 && stats.spend === 0) {
     lines.push(``, `ℹ️ Вчера рекламные кампании не запускались.`)
   } else if (stats.leads === 0) {
-    lines.push(``, `💡 Лидов пока нет. Попробуйте скорректировать аудиторию.`)
+    lines.push(``, `💡 Лидов пока нет. Попробуйте скорректировать аудиторию или креатив.`)
   } else {
-    lines.push(``, `✅ Данные получены из Facebook Ads.`)
+    const roas = stats.spend > 0 ? `Хороший результат! ✅` : ''
+    lines.push(``, roas || `✅ Данные получены из Facebook Ads.`)
   }
 
-  lines.push(``, `🚀 Управляйте рекламой: @marketologluna_bot`)
+  lines.push(``, `📱 Открыть приложение: @marketologluna_bot`)
 
   return lines.join('\n')
 }
@@ -192,8 +213,8 @@ function getDatePartsInTz(date, timeZone) {
 
 async function fetchDailyStats(user, dateYmd) {
   try {
-    const url = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
-      fields: 'spend,impressions,actions,currency',
+    const url = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      fields: 'spend,impressions,reach,clicks,actions,currency',
       time_range: JSON.stringify({ since: dateYmd, until: dateYmd }),
       access_token: user.fb_access_token
     })
@@ -202,25 +223,41 @@ async function fetchDailyStats(user, dateYmd) {
     const data = await res.json()
 
     if (!res.ok || data?.error) {
-      console.warn('FB stats error:', data?.error || data)
+      const errCode = data?.error?.code
+      const errMsg = data?.error?.message || JSON.stringify(data)
+      console.warn(`FB stats error for user ${user.tg_user_id}: [${errCode}] ${errMsg}`)
+
+      // Токен истёк или отозван — помечаем в базе
+      if (errCode === 190 || errCode === 102) {
+        await supabase.from('users')
+          .update({ fb_access_token: null })
+          .eq('tg_user_id', user.tg_user_id)
+        console.warn(`Cleared expired token for user ${user.tg_user_id}`)
+      }
       return null
     }
 
     const insight = data.data?.[0] || {}
-    const leads = insight.actions?.find(a => a.action_type === 'lead')?.value || 0
+    const leads = parseInt(insight.actions?.find(a =>
+      a.action_type === 'lead' || a.action_type === 'onsite_conversion.lead_grouped'
+    )?.value || 0)
     const spend = parseFloat(insight.spend || 0)
     const impressions = parseInt(insight.impressions || 0)
+    const reach = parseInt(insight.reach || 0)
+    const clicks = parseInt(insight.clicks || 0)
     const cpl = leads > 0 ? (spend / leads) : 0
 
     return {
       spend,
-      leads: parseInt(leads),
+      leads,
       cpl,
       impressions: Number.isNaN(impressions) ? 0 : impressions,
+      reach: Number.isNaN(reach) ? 0 : reach,
+      clicks: Number.isNaN(clicks) ? 0 : clicks,
       currency: insight.currency || '$'
     }
   } catch (error) {
-    console.warn('FB stats exception:', error)
+    console.warn(`FB stats exception for user ${user.tg_user_id}:`, error.message)
     return null
   }
 }

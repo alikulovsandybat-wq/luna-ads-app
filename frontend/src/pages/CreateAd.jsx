@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react'
+import { useRef, useState, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
 import styles from './CreateAd.module.css'
 import { useI18n } from '../i18n'
+import CreativeEditor from '../components/CreativeEditor'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -171,6 +172,157 @@ function ImageCarousel({ images, selectedIndex, onSelect }) {
   )
 }
 
+// ── Поиск городов через Meta Locations API ────────────────────────────────────
+function GeoSearch({ value, onSelect, placeholder }) {
+  const [query, setQuery] = useState(value?.display || value?.name || '')
+  const [suggestions, setSuggestions] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [open, setOpen] = useState(false)
+  const debounceRef = useRef(null)
+  const wrapRef = useRef(null)
+
+  const popular = [
+    { key: 'KZ', name: 'Казахстан', type: 'country', country_code: 'KZ', display: 'Казахстан (вся страна)' },
+    { key: '2147', name: 'Алматы', type: 'city', country_code: 'KZ', display: 'Алматы, Казахстан' },
+    { key: '2233', name: 'Астана', type: 'city', country_code: 'KZ', display: 'Астана, Казахстан' },
+    { key: '2148', name: 'Шымкент', type: 'city', country_code: 'KZ', display: 'Шымкент, Казахстан' },
+    { key: 'RU', name: 'Россия', type: 'country', country_code: 'RU', display: 'Россия (вся страна)' },
+    { key: '2077', name: 'Москва', type: 'city', country_code: 'RU', display: 'Москва, Россия' },
+    { key: 'UZ', name: 'Узбекистан', type: 'country', country_code: 'UZ', display: 'Узбекистан (вся страна)' },
+  ]
+
+  useEffect(() => {
+    function handleClick(e) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false)
+    }
+    document.addEventListener('mousedown', handleClick)
+    return () => document.removeEventListener('mousedown', handleClick)
+  }, [])
+
+  function getAuthHeaders() {
+    return {
+      'x-tg-data': window.Telegram?.WebApp?.initData || '',
+      'x-tg-userid': localStorage.getItem('luna_tg_userid') || ''
+    }
+  }
+
+  function handleInput(e) {
+    const val = e.target.value
+    setQuery(val)
+    setOpen(true)
+
+    // Если очистили — сбрасываем выбор
+    if (!val) { onSelect(null); setSuggestions([]); return }
+
+    clearTimeout(debounceRef.current)
+    if (val.length < 2) { setSuggestions([]); return }
+
+    debounceRef.current = setTimeout(async () => {
+      setLoading(true)
+      try {
+        const res = await fetch(
+          `${API}/api/geo-search?q=${encodeURIComponent(val)}`,
+          { headers: getAuthHeaders() }
+        )
+        const data = await res.json()
+        setSuggestions(data.data || [])
+      } catch {
+        // Фоллбек — фильтруем popular
+        setSuggestions(popular.filter(p =>
+          p.display.toLowerCase().includes(val.toLowerCase()) ||
+          p.name.toLowerCase().includes(val.toLowerCase())
+        ))
+      } finally {
+        setLoading(false)
+      }
+    }, 350)
+  }
+
+  function select(item) {
+    setQuery(item.display || item.name)
+    onSelect(item)   // передаём весь объект с key, type, country_code
+    setSuggestions([])
+    setOpen(false)
+  }
+
+  const typeIcon = (type) => type === 'country' ? '🌍' : type === 'region' ? '🗺' : '📍'
+  const showPopular = open && query.length === 0
+  const showSuggestions = open && suggestions.length > 0
+
+  return (
+    <div ref={wrapRef} style={{ position: 'relative' }}>
+      <div style={{ position: 'relative' }}>
+        <input
+          style={{
+            width: '100%', padding: '12px 40px 12px 14px',
+            borderRadius: 12, border: '1.5px solid var(--border)',
+            background: 'var(--bg2)', color: 'var(--text)',
+            fontSize: 15, outline: 'none', transition: 'border 0.2s',
+            fontFamily: 'var(--font-body)'
+          }}
+          value={query}
+          onChange={handleInput}
+          onFocus={() => setOpen(true)}
+          placeholder={placeholder || 'Алматы, Астана...'}
+        />
+        <span style={{
+          position: 'absolute', right: 12, top: '50%',
+          transform: 'translateY(-50%)', fontSize: 16,
+          color: 'var(--text3)', pointerEvents: 'none'
+        }}>
+          {loading ? '⌛' : '📍'}
+        </span>
+      </div>
+
+      {(showPopular || showSuggestions) && (
+        <div style={{
+          position: 'absolute', top: 'calc(100% + 4px)', left: 0, right: 0,
+          background: 'var(--card)', borderRadius: 12,
+          border: '1px solid var(--border)',
+          boxShadow: '0 8px 24px rgba(0,0,0,0.12)',
+          zIndex: 100, overflow: 'hidden', maxHeight: 280, overflowY: 'auto'
+        }}>
+          {showPopular && (
+            <>
+              <div style={{ fontSize: 11, color: 'var(--text3)', padding: '8px 14px 4px', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                Популярные
+              </div>
+              {popular.map(item => (
+                <div key={item.key} onMouseDown={() => select(item)} style={{
+                  padding: '10px 14px', cursor: 'pointer', fontSize: 14,
+                  color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+                }}
+                  onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+                  onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+                >
+                  <span>{typeIcon(item.type)} {item.display}</span>
+                  <span style={{ fontSize: 11, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 7px', borderRadius: 6 }}>
+                    {item.type === 'country' ? 'страна' : item.type === 'region' ? 'регион' : 'город'}
+                  </span>
+                </div>
+              ))}
+            </>
+          )}
+          {showSuggestions && suggestions.map(item => (
+            <div key={item.key} onMouseDown={() => select(item)} style={{
+              padding: '10px 14px', cursor: 'pointer', fontSize: 14,
+              color: 'var(--text)', display: 'flex', justifyContent: 'space-between', alignItems: 'center'
+            }}
+              onMouseEnter={e => e.currentTarget.style.background = 'var(--bg3)'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >
+              <span>{typeIcon(item.type)} {item.display}</span>
+              <span style={{ fontSize: 11, color: 'var(--text3)', background: 'var(--bg3)', padding: '2px 7px', borderRadius: 6 }}>
+                {item.type === 'country' ? 'страна' : item.type === 'region' ? 'регион' : 'город'}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Основной компонент ────────────────────────────────────────────────────────
 export default function CreateAd() {
   const navigate = useNavigate()
@@ -183,6 +335,7 @@ export default function CreateAd() {
   const [generatingImage, setGeneratingImage] = useState(false)
   const [launching, setLaunching] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
+  const [showEditor, setShowEditor] = useState(false)
 
   // Несколько сгенерированных картинок
   const [generatedImages, setGeneratedImages] = useState([])
@@ -196,10 +349,10 @@ export default function CreateAd() {
   ]
 
   const creativeTypes = [
-    { id: 'photo', label: t('create.creative.photo.label'), helper: t('create.creative.photo.helper') },
-    { id: 'video', label: t('create.creative.video.label'), helper: t('create.creative.video.helper') },
-    { id: 'reels', label: t('create.creative.reels.label'), helper: t('create.creative.reels.helper') },
-    { id: 'ai', label: t('create.creative.ai.label'), helper: t('create.creative.ai.helper') }
+    { id: 'photo', label: t('create.creative.photo.label'), helper: t('create.creative.photo.helper'), available: true },
+    { id: 'video', label: t('create.creative.video.label'), helper: 'Скоро', available: false },
+    { id: 'reels', label: t('create.creative.reels.label'), helper: 'Скоро', available: false },
+    { id: 'ai', label: t('create.creative.ai.label'), helper: t('create.creative.ai.helper'), available: true }
   ]
 
   // Категории рекламы для выбора шаблона Creatomate
@@ -244,6 +397,7 @@ export default function CreateAd() {
   const [form, setForm] = useState({
     budget: '10',
     geo: '',
+    geoObj: null,  // полный объект { key, type, country_code, display }
     ageMin: '18',
     ageMax: '45',
     interests: '',
@@ -445,6 +599,7 @@ export default function CreateAd() {
       const fd = new FormData()
       fd.append('budget', form.budget)
       fd.append('geo', form.geo)
+      if (form.geoObj) fd.append('geoObj', JSON.stringify(form.geoObj))
       fd.append('ageMin', form.ageMin)
       fd.append('ageMax', form.ageMax)
       fd.append('interests', JSON.stringify(
@@ -491,6 +646,30 @@ export default function CreateAd() {
         }} />
       )}
 
+      {/* Canvas редактор */}
+      {showEditor && (
+        <CreativeEditor
+          imageUrl={form.imagePreview}
+          rawImageFile={form.image}
+          headline={form.headline}
+          subtext={form.text}
+          cta={form.cta}
+          onExport={({ file, previewUrl }) => {
+            update('image', file)
+            update('imagePreview', previewUrl)
+            update('mediaType', 'image')
+            update('mediaName', 'creative.png')
+            setGeneratedImages(prev => {
+              const next = [...prev, previewUrl].slice(-3)
+              setSelectedImageIndex(next.length - 1)
+              return next
+            })
+            setShowEditor(false)
+          }}
+          onClose={() => setShowEditor(false)}
+        />
+      )}
+
       <div className={styles.header}>
         <h1 className={styles.title}>{t('create.title')}</h1>
       </div>
@@ -513,8 +692,14 @@ export default function CreateAd() {
                 onChange={e => update('budget', e.target.value)} placeholder="10" />
             </Field>
             <Field label={t('create.field_geo')}>
-              <input className={styles.input} value={form.geo}
-                onChange={e => update('geo', e.target.value)} placeholder={t('create.field_geo')} />
+              <GeoSearch
+                value={form.geoObj}
+                onSelect={item => {
+                  update('geoObj', item)
+                  update('geo', item ? (item.key || item.name) : '')
+                }}
+                placeholder="Алматы, Астана, Казахстан..."
+              />
             </Field>
           </div>
         )}
@@ -592,7 +777,17 @@ export default function CreateAd() {
               {creativeTypes.map(type => (
                 <button key={type.id} type="button"
                   className={`${styles.creativeCard} ${form.creativeType === type.id ? styles.creativeActive : ''}`}
-                  onClick={() => selectCreative(type.id)}>
+                  onClick={() => type.available && selectCreative(type.id)}
+                  style={{ opacity: type.available ? 1 : 0.5, cursor: type.available ? 'pointer' : 'default', position: 'relative' }}
+                >
+                  {!type.available && (
+                    <div style={{
+                      position: 'absolute', top: 6, right: 6,
+                      background: 'var(--bg3)', borderRadius: 6,
+                      fontSize: 9, padding: '2px 6px', color: 'var(--text3)',
+                      fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em'
+                    }}>Скоро</div>
+                  )}
                   <div className={styles.creativeLabel}>{type.label}</div>
                   <div className={styles.creativeHint}>{type.helper}</div>
                 </button>
@@ -618,11 +813,27 @@ export default function CreateAd() {
 
             {/* Карусель картинок */}
             {generatedImages.length > 0 && form.mediaType !== 'video' && (
-              <ImageCarousel
-                images={generatedImages}
-                selectedIndex={selectedImageIndex}
-                onSelect={handleCarouselSelect}
-              />
+              <>
+                <ImageCarousel
+                  images={generatedImages}
+                  selectedIndex={selectedImageIndex}
+                  onSelect={handleCarouselSelect}
+                />
+                {/* Кнопка редактирования */}
+                <button
+                  onClick={() => setShowEditor(true)}
+                  style={{
+                    width: '100%', padding: '12px', borderRadius: 12,
+                    background: 'linear-gradient(135deg, #1C1C1E, #2C2C2E)',
+                    border: '1.5px solid rgba(255,255,255,0.15)',
+                    color: '#fff', fontSize: 15, fontWeight: 600,
+                    cursor: 'pointer', marginBottom: 8,
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8
+                  }}
+                >
+                  ✏️ Редактировать текст на картинке
+                </button>
+              </>
             )}
 
             <Field label="Категория рекламы">

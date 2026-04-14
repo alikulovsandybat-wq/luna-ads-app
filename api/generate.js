@@ -1,5 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
-import { getTgUserId, requireSubscription } from './_subscription.js'
+import { getTgUserId, requireSubscription, checkEndpointRateLimit } from './_subscription.js'
 
 const supabase = createClient(
   process.env.SUPABASE_URL,
@@ -27,6 +27,8 @@ async function fetchWithTimeout(url, options, timeoutMs = 25000) {
 export default async function handler(req, res) {
   if (req.method === 'OPTIONS') return res.status(200).end()
   if (req.method !== 'POST') return res.status(405).end()
+
+  if (!checkEndpointRateLimit(req, res, 'generate')) return
 
   try {
     const tgUserId = getTgUserId(req)
