@@ -24,7 +24,7 @@ export default async function handler(req, res) {
 
     if (!accessToken) {
       console.error('No access token:', tokenData)
-      return res.status(400).send('Facebook auth failed')
+      return res.status(400).send('Facebook auth failed: ' + (tokenData.error?.message || 'No access token'))
     }
 
     // 2. Получаем данные пользователя FB
@@ -35,11 +35,14 @@ export default async function handler(req, res) {
 
     // 3. Получаем рекламные аккаунты
     const accountsRes = await fetch(
-      `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_status&access_token=${accessToken}`
+      `https://graph.facebook.com/v21.0/me/adaccounts?fields=id,name,account_status,currency&access_token=${accessToken}`
     )
     const accountsData = await accountsRes.json()
     const adAccounts = accountsData.data || []
-    const primaryAdAccountId = adAccounts[0]?.id || null
+    
+    // Выбираем первый АКТИВНЫЙ аккаунт (status 1 = ACTIVE)
+    const activeAccount = adAccounts.find(acc => acc.account_status === 1) || adAccounts[0]
+    const primaryAdAccountId = activeAccount?.id || null
 
     // 4. Сохраняем в Supabase
     await supabase.from('users').upsert({
@@ -59,6 +62,14 @@ export default async function handler(req, res) {
     const appUrl = `https://t.me/${botUsername}/app?startapp=fb_token_ok`
     
     res.setHeader('Content-Type', 'text/html')
+    
+    // Если аккаунтов нет вообще, предупреждаем пользователя
+    const statusEmoji = primaryAdAccountId ? '✅' : '⚠️'
+    const statusTitle = primaryAdAccountId ? 'Почти готово!' : 'Аккаунты не найдены'
+    const statusText = primaryAdAccountId 
+      ? 'Facebook успешно подключен. Теперь вернитесь в Telegram, чтобы продолжить работу.'
+      : 'Facebook подключен, но мы не нашли активных рекламных аккаунтов. Убедитесь, что у вас создан рекламный кабинет в Meta.'
+
     res.send(`<!DOCTYPE html>
 <html>
 <head>
@@ -77,22 +88,23 @@ export default async function handler(req, res) {
 </head>
 <body>
   <div class="box">
-    <div class="emoji">✅</div>
-    <h2>Почти готово!</h2>
-    <p>Facebook успешно подключен. Теперь вернитесь в Telegram, чтобы продолжить работу.</p>
+    <div class="emoji">${statusEmoji}</div>
+    <h2>${statusTitle}</h2>
+    <p>${statusText}</p>
     <a href="${appUrl}" class="btn">Вернуться в Luna Ads</a>
   </div>
   <script>
-    // Пытаемся автоматически перенаправить
+    ${primaryAdAccountId ? `
     setTimeout(() => {
       window.location.href = "${appUrl}";
     }, 2000);
+    ` : ''}
   </script>
 </body>
 </html>`)
 
   } catch (e) {
     console.error('Callback error:', e)
-    res.status(500).send('Auth error')
+    res.status(500).send('Auth error: ' + e.message)
   }
 }

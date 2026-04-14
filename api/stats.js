@@ -21,33 +21,37 @@ export default async function handler(req, res) {
       .single()
 
     if (!requireSubscription(user, res)) return
+    
     if (!user?.fb_access_token) return res.status(401).json({ error: 'No Facebook token' })
+    if (!user?.fb_ad_account_id) return res.status(400).json({ error: 'No ad account selected' })
 
     const days = parseInt(req.query.days || '7')
     const since = getDateBefore(days)
     const until = getDateBefore(0)
 
-    // ── Fetch 1: Total summary stats ──
-    const summaryUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
-      fields: 'spend,impressions,reach,clicks,actions',
+    const params = {
       time_range: JSON.stringify({ since, until }),
       access_token: user.fb_access_token
+    }
+
+    // ── Fetch 1: Total summary stats ──
+    const summaryUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      ...params,
+      fields: 'spend,impressions,reach,clicks,actions'
     })
 
     // ── Fetch 2: Daily breakdown for chart ──
     const dailyUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      ...params,
       fields: 'spend,impressions,reach,clicks',
-      time_range: JSON.stringify({ since, until }),
-      time_increment: '1',
-      access_token: user.fb_access_token
+      time_increment: '1'
     })
 
-    // ── Fetch 3: Platform breakdown (Facebook vs Instagram) ──
+    // ── Fetch 3: Platform breakdown ──
     const platformUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      ...params,
       fields: 'impressions,reach,spend',
-      time_range: JSON.stringify({ since, until }),
-      breakdowns: 'publisher_platform',
-      access_token: user.fb_access_token
+      breakdowns: 'publisher_platform'
     })
 
     const [summaryRes, dailyRes, platformRes] = await Promise.all([
@@ -61,6 +65,11 @@ export default async function handler(req, res) {
       dailyRes.json(),
       platformRes.json()
     ])
+
+    // Если Meta вернула ошибку токена (код 190), сообщаем об этом
+    if (summaryData.error?.code === 190) {
+      return res.status(401).json({ error: 'Token expired', message: 'Пожалуйста, переподключите Facebook в профиле' })
+    }
 
     // ── Process summary ──
     const insight = summaryData.data?.[0] || {}
@@ -100,7 +109,7 @@ export default async function handler(req, res) {
       platforms
     })
   } catch (e) {
-    console.error(e)
+    console.error('Stats error:', e)
     res.status(500).json({ error: 'Server error' })
   }
 }
