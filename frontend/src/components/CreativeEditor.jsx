@@ -65,50 +65,6 @@ function defaultLayers(headline, subtext, cta) {
     },
   ]
 }
-  return [
-    {
-      id: 1,
-      text: headline || 'Заголовок',
-      x: CANVAS_SIZE / 2,
-      y: CANVAS_SIZE * 0.65,
-      fontSize: 72,
-      fontFamily: 'Inter, sans-serif',
-      color: '#FFFFFF',
-      bold: true,
-      italic: false,
-      align: 'center',
-      shadow: true,
-    },
-    {
-      id: 2,
-      text: subtext || 'Подзаголовок или описание',
-      x: CANVAS_SIZE / 2,
-      y: CANVAS_SIZE * 0.75,
-      fontSize: 44,
-      fontFamily: 'Inter, sans-serif',
-      color: '#FFFFFF',
-      bold: false,
-      italic: false,
-      align: 'center',
-      shadow: true,
-    },
-    {
-      id: 3,
-      text: cta || 'Узнать подробнее',
-      x: CANVAS_SIZE / 2,
-      y: CANVAS_SIZE * 0.87,
-      fontSize: 40,
-      fontFamily: 'Inter, sans-serif',
-      color: '#FFFFFF',
-      bold: true,
-      italic: false,
-      align: 'center',
-      shadow: false,
-      pill: true,
-      pillColor: '#007AFF',
-    },
-  ]
-}
 
 export default function CreativeEditor({ imageUrl, rawImageFile, headline, subtext, cta, onExport, onClose }) {
   const canvasRef = useRef(null)
