@@ -137,13 +137,13 @@ export default function Dashboard() {
     try {
       const WebApp = window.Telegram?.WebApp
       const tgData = WebApp?.initData || ''
-      const userId = WebApp?.initDataUnsafe?.user?.id?.toString() || ''
-      
+      let userId = localStorage.getItem('luna_tg_userid')
+      if (!userId && WebApp?.initDataUnsafe?.user?.id) {
+        userId = WebApp.initDataUnsafe.user.id.toString()
+        localStorage.setItem('luna_tg_userid', userId)
+      }
       const res = await fetch(`${API}/api/stats?days=${period}`, {
-        headers: { 
-          'x-tg-data': tgData, 
-          'x-tg-userid': userId 
-        }
+        headers: { 'x-tg-data': tgData, 'x-tg-userid': userId || '' }
       })
       const data = await res.json()
       if (!res.ok || data?.error) {

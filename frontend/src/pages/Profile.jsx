@@ -4,63 +4,48 @@ import LanguageSwitcher from '../components/LanguageSwitcher'
 
 const API = import.meta.env.VITE_API_URL || ''
 
+// ── Ссылки на оплату из LemonSqueezy ─────────────────────────────────────────
 const CHECKOUT_URLS = {
-  starter:   'https://lunatargetapp.lemonsqueezy.com/checkout/buy/88687c18-b8ff-4eba-b8c9-09a97cb23028',
-  autopilot: 'https://lunatargetapp.lemonsqueezy.com/checkout/buy/aa31b431-01f2-4b67-94e4-bdf52aceb43d',
-  agency:    'https://lunatargetapp.lemonsqueezy.com/checkout/buy/f261d1a2-33a9-4a52-8942-116bbae0e939',
+  standard: 'https://lunatargetapp.lemonsqueezy.com/checkout/buy/88687c18-b8ff-4eba-b8c9-09a97cb23028',
+  pro:      'https://lunatargetapp.lemonsqueezy.com/checkout/buy/f261d1a2-33a9-4a52-8942-116bbae0e939',
 }
 
 export default function Profile() {
   const { t } = useI18n()
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [currentPlan, setCurrentPlan] = useState('autopilot')
+  const [currentPlan, setCurrentPlan] = useState('standard')
 
+  // ОБНОВЛЕННЫЕ ТАРИФЫ СОГЛАСНО ТЗ
   const PLANS = [
     {
-      id: 'starter',
-      name: 'Starter',
-      price: '$50',
-      priceKzt: '25 000 ₸',
-      color: '#007AFF',
-      features: [
-        t('profile.plan.starter.f1'),
-        t('profile.plan.starter.f2'),
-        t('profile.plan.starter.f3'),
-        t('profile.plan.starter.f4'),
-        t('profile.plan.starter.f5'),
-      ],
-      popular: false,
-    },
-    {
-      id: 'autopilot',
-      name: 'Autopilot',
+      id: 'standard',
+      name: 'Стандарт',
       price: '$100',
       priceKzt: '50 000 ₸',
-      color: '#7c3aed',
+      color: '#007AFF',
       features: [
-        t('profile.plan.autopilot.f1'),
-        t('profile.plan.autopilot.f2'),
-        t('profile.plan.autopilot.f3'),
-        t('profile.plan.autopilot.f4'),
-        t('profile.plan.autopilot.f5'),
-        t('profile.plan.autopilot.f6'),
+        '30 креативов в месяц',
+        '30 рекламных кампаний',
+        'AI генерация текстов',
+        'AI генерация картинок',
+        'Базовая аналитика',
       ],
       popular: true,
     },
     {
-      id: 'agency',
-      name: 'Agency',
-      price: '$200',
-      priceKzt: '100 000 ₸',
-      color: '#059669',
+      id: 'pro',
+      name: 'PRO',
+      price: '$300',
+      priceKzt: '150 000 ₸',
+      color: '#7c3aed',
       features: [
-        t('profile.plan.agency.f1'),
-        t('profile.plan.agency.f2'),
-        t('profile.plan.agency.f3'),
-        t('profile.plan.agency.f4'),
-        t('profile.plan.agency.f5'),
-        t('profile.plan.agency.f6'),
+        '100 креативов в месяц',
+        'Неограниченные кампании',
+        'Доступ для 2-х сотрудников',
+        'AI автооптимизация',
+        'Приоритетная поддержка',
+        'SLA 99.9%',
       ],
       popular: false,
     },
@@ -73,7 +58,7 @@ export default function Profile() {
     try {
       const WebApp = window.Telegram?.WebApp
       const tgData = WebApp?.initData || ''
-      const userId = WebApp?.initDataUnsafe?.user?.id?.toString() || ''
+      const userId = localStorage.getItem('luna_tg_userid') || ''
       const tgUser = WebApp?.initDataUnsafe?.user
 
       const res = await fetch(`${API}/api/profile`, {
@@ -88,25 +73,27 @@ export default function Profile() {
         setProfile({
           name: tgUser ? `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim() : null,
           username: tgUser?.username || '',
-          tg_user_id: userId || '—',
+          tg_user_id: userId || tgUser?.id || '—',
           ad_account_id: '—',
           email: null,
-          plan: 'autopilot',
+          plan: 'standard',
           plan_expires: null,
+          usage: { creatives: 0, campaigns: 0, limits: { creatives: 30, campaigns: 30 } }
         })
       }
     } catch {
       const WebApp = window.Telegram?.WebApp
       const tgUser = WebApp?.initDataUnsafe?.user
-      const userId = WebApp?.initDataUnsafe?.user?.id?.toString() || ''
+      const userId = localStorage.getItem('luna_tg_userid') || '—'
       setProfile({
         name: tgUser ? `${tgUser.first_name || ''} ${tgUser.last_name || ''}`.trim() : null,
         username: tgUser?.username || '',
-        tg_user_id: userId || '—',
+        tg_user_id: userId,
         ad_account_id: '—',
         email: null,
-        plan: 'autopilot',
+        plan: 'standard',
         plan_expires: null,
+        usage: { creatives: 0, campaigns: 0, limits: { creatives: 30, campaigns: 30 } }
       })
     }
     setLoading(false)
@@ -115,16 +102,8 @@ export default function Profile() {
   function handlePayment(planId) {
     const userId = profile?.tg_user_id || ''
     const baseUrl = CHECKOUT_URLS[planId]
-    const url = `${baseUrl}?checkout[custom][tg_user_id]=${userId}&checkout[custom][months]=1`
+    const url = `${baseUrl}?checkout[custom][tg_user_id]=${userId}&checkout[custom][plan_id]=${planId}`
     window.Telegram?.WebApp?.openLink(url) || window.open(url, '_blank')
-  }
-
-  async function handleDisconnect() {
-    if (!window.confirm(t('profile.disconnect_confirm') || 'Вы уверены, что хотите отключить Facebook?')) return
-    
-    // В идеале тут должен быть запрос на бэкенд для удаления токена
-    // Но пока просто перенаправляем на коннект, так как App.jsx все равно проверит статус
-    window.location.href = '/connect'
   }
 
   if (loading) return (
@@ -135,12 +114,13 @@ export default function Profile() {
     </div>
   )
 
-  const activePlan = PLANS.find(p => p.id === currentPlan) || PLANS[1]
+  const activePlan = PLANS.find(p => p.id === currentPlan) || PLANS[0]
   const isExpired = profile?.plan_expires && new Date(profile.plan_expires) < new Date()
 
   return (
     <div style={{ padding: '20px 16px 100px', fontFamily: "'Inter', -apple-system, sans-serif" }}>
 
+      {/* Заголовок */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24 }}>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#007AFF', letterSpacing: -0.5 }}>
           {t('profile.title')}
@@ -148,6 +128,7 @@ export default function Profile() {
         <LanguageSwitcher />
       </div>
 
+      {/* Карточка пользователя */}
       <div style={{
         background: 'var(--card)', border: '1px solid var(--border)',
         borderRadius: 20, padding: '20px', marginBottom: 16
@@ -189,7 +170,27 @@ export default function Profile() {
           </div>
         ))}
 
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0' }}>
+        {/* НОВОЕ: ИНДИКАТОРЫ ЛИМИТОВ */}
+        <div style={{ marginTop: 16, padding: '12px', background: 'var(--bg3)', borderRadius: 14 }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: 'var(--text2)', marginBottom: 12, textTransform: 'uppercase' }}>
+            Использование лимитов:
+          </div>
+          <UsageRow 
+            label="Креативы ИИ" 
+            current={profile?.usage?.creatives || 0} 
+            max={profile?.usage?.limits?.creatives || 30} 
+            color="#007AFF" 
+          />
+          <UsageRow 
+            label="Запуски кампаний" 
+            current={profile?.usage?.campaigns || 0} 
+            max={profile?.usage?.limits?.campaigns || 30} 
+            color="#10B981" 
+          />
+        </div>
+
+        {/* Тариф + статус */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', marginTop: 8 }}>
           <span style={{ fontSize: 13, color: 'var(--text2)', display: 'flex', alignItems: 'center', gap: 6 }}>
             💎 {t('profile.plan_label')}
           </span>
@@ -199,7 +200,7 @@ export default function Profile() {
               color: activePlan.color, fontSize: 12, fontWeight: 700,
               padding: '4px 12px', borderRadius: 20
             }}>
-              {activePlan.name}
+              {activePlan.name.toUpperCase()}
             </div>
             {profile?.plan_expires && (
               <div style={{ fontSize: 11, color: isExpired ? '#ef4444' : 'var(--text3)' }}>
@@ -210,10 +211,12 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* Промобанер ProductHunt (ВОССТАНОВЛЕН) */}
       <div style={{
         background: 'linear-gradient(135deg, #ff6154 0%, #ff8c00 100%)',
         borderRadius: 16, padding: '14px 16px', marginBottom: 16,
-        display: 'flex', alignItems: 'center', gap: 12
+        display: 'flex', alignItems: 'center', gap: 12,
+        boxShadow: '0 8px 20px rgba(255, 97, 84, 0.25)'
       }}>
         <div style={{ fontSize: 28 }}>🚀</div>
         <div>
@@ -226,6 +229,7 @@ export default function Profile() {
         </div>
       </div>
 
+      {/* Тарифные планы */}
       <div style={{ fontSize: 16, fontWeight: 700, color: 'var(--text)', marginBottom: 14 }}>
         {t('profile.plans_title')}
       </div>
@@ -262,15 +266,12 @@ export default function Profile() {
                 </div>
                 <div style={{ textAlign: 'right' }}>
                   <div>
-                    <span style={{ fontSize: 28, fontWeight: 800, color: plan.color, letterSpacing: -1 }}>
-                      {plan.price}
-                    </span>
-                    <span style={{ fontSize: 12, color: 'var(--text2)', marginLeft: 2 }}>
-                      / {t('profile.per_month')}
+                    <span style={{ fontSize: 24, fontWeight: 800, color: plan.color, letterSpacing: -1 }}>
+                      {plan.priceKzt}
                     </span>
                   </div>
-                  <div style={{ fontSize: 12, color: 'var(--text3)', marginTop: 2 }}>
-                    ≈ {plan.priceKzt} / мес
+                  <div style={{ fontSize: 11, color: 'var(--text3)', marginTop: 2 }}>
+                    в месяц
                   </div>
                 </div>
               </div>
@@ -303,7 +304,11 @@ export default function Profile() {
         })}
       </div>
 
-      <button onClick={handleDisconnect} style={{
+      {/* Кнопка выхода */}
+      <button onClick={() => {
+        localStorage.clear();
+        window.location.href = '/connect'
+      }} style={{
         width: '100%', marginTop: 24, padding: '14px', borderRadius: 12,
         border: '1px solid var(--border)', background: 'transparent',
         color: '#ef4444', fontSize: 14, fontWeight: 600,
@@ -311,6 +316,28 @@ export default function Profile() {
       }}>
         {t('profile.disconnect')}
       </button>
+    </div>
+  )
+}
+
+// Вспомогательный компонент для полосок лимитов
+function UsageRow({ label, current, max, color }) {
+  const pct = Math.min((current / max) * 100, 100)
+  return (
+    <div style={{ marginBottom: 12 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, marginBottom: 5 }}>
+        <span style={{ color: 'var(--text2)' }}>{label}</span>
+        <span style={{ fontWeight: 700, color: 'var(--text)' }}>{current} / {max}</span>
+      </div>
+      <div style={{ height: 6, background: 'rgba(0,0,0,0.05)', borderRadius: 3, overflow: 'hidden' }}>
+        <div style={{ 
+          width: `${pct}%`, 
+          height: '100%', 
+          background: color, 
+          borderRadius: 3, 
+          transition: 'width 0.6s cubic-bezier(0.1, 0, 0.4, 1)' 
+        }} />
+      </div>
     </div>
   )
 }
