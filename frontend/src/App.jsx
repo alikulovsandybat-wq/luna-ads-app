@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState } from 'react'
 import { BrowserRouter, Routes, Route, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import Dashboard from './pages/Dashboard'
 import Campaigns from './pages/Campaigns'
@@ -12,7 +12,6 @@ import Layout from './components/Layout'
 import { I18nProvider } from './i18n'
 
 const tg = window.Telegram?.WebApp
-const API_URL = import.meta.env.VITE_API_URL || ''
 
 function AppRoutes({ isConnected, onConnect }) {
   const location = useLocation()
@@ -23,9 +22,22 @@ function AppRoutes({ isConnected, onConnect }) {
     const token = params.get('fb_token')
     if (!token) return
 
-    // Если токен пришел в URL (например, из старого флоу или отладки), 
-    // мы все равно полагаемся на проверку бэкенда по tg_id, 
-    // но можем вызвать onConnect для немедленного перехода.
+    // Сохраняем флаг подключения
+    localStorage.setItem('fb_connected', '1')
+    localStorage.setItem('fb_token', token)
+
+    // Сохраняем tg_user_id если пришёл из callback
+    const tgUserIdFromCallback = params.get('tg_user_id')
+    if (tgUserIdFromCallback) {
+      localStorage.setItem('luna_tg_userid', tgUserIdFromCallback)
+    }
+
+    // Fallback: берём из Telegram WebApp если доступен
+    const tgId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id
+    if (tgId && !localStorage.getItem('luna_tg_userid')) {
+      localStorage.setItem('luna_tg_userid', String(tgId))
+    }
+
     onConnect()
     navigate('/', { replace: true })
   }, [location.search, navigate, onConnect])
@@ -50,34 +62,6 @@ export default function App() {
   const [isReady, setIsReady] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
 
-  const checkAuth = useCallback(async () => {
-    try {
-      const tgUserId = tg?.initDataUnsafe?.user?.id
-      if (!tgUserId) {
-        setIsReady(true)
-        return
-      }
-
-      const headers = {
-        'x-tg-data': tg.initData || '',
-        'x-tg-userid': String(tgUserId)
-      }
-
-      const res = await fetch(`${API_URL}/api/profile`, { headers })
-      if (res.ok) {
-        const data = await res.json()
-        // Если у пользователя есть ad_account_id, значит Facebook подключен
-        if (data.ad_account_id) {
-          setIsConnected(true)
-        }
-      }
-    } catch (err) {
-      console.error('Auth check failed:', err)
-    } finally {
-      setIsReady(true)
-    }
-  }, [])
-
   useEffect(() => {
     if (tg) {
       tg.ready()
@@ -85,8 +69,11 @@ export default function App() {
       tg.setHeaderColor('#ffffff')
       tg.setBackgroundColor('#F9FAFB')
     }
-    checkAuth()
-  }, [checkAuth])
+
+    const fbConnected = localStorage.getItem('fb_connected')
+    setIsConnected(!!fbConnected)
+    setIsReady(true)
+  }, [])
 
   if (!isReady) return (
     <div style={{
