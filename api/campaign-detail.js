@@ -1,5 +1,4 @@
-﻿// api/campaign-detail.js
-import { createClient } from '@supabase/supabase-js'
+﻿import { createClient } from '@supabase/supabase-js'
 import { getTgUserId, requireSubscription } from './_subscription.js'
 
 const supabase = createClient(
@@ -17,6 +16,7 @@ export default async function handler(req, res) {
 
     const tgUserId = getTgUserId(req)
     if (!tgUserId) return res.status(401).json({ error: 'Unauthorized' })
+    
     const { data: user } = await supabase
       .from('users')
       .select('fb_access_token, fb_ad_account_id, subscription_active, subscription_until')
@@ -24,60 +24,56 @@ export default async function handler(req, res) {
       .single()
 
     if (!requireSubscription(user, res)) return
-
     if (!user?.fb_access_token) return res.status(401).json({ error: 'No token' })
 
     const token = user.fb_access_token
 
-    const campaignUrl = `https://graph.facebook.com/v21.0/${campaignId}?` + new URLSearchParams({
-      fields: 'id,name,status,objective,created_time,insights{spend,impressions,clicks,ctr,cpc,actions}',
-      access_token: token
-    })
+    // Расширенные поля Insights API согласно ТЗ
+    const fields = 'id,name,status,objective,created_time,insights{spend,impressions,reach,inline_link_clicks,ctr,cpc,actions}'
+    const campaignUrl = `https://graph.facebook.com/v18.0/${campaignId}?fields=${fields}&access_token=${token}`
 
     const campaignRes = await fetch(campaignUrl)
     const campaignData = await campaignRes.json()
     if (campaignData.error) return res.status(400).json({ error: campaignData.error.message })
 
     const insight = campaignData.insights?.data?.[0] || {}
-    const leads = getActionValue(insight.actions, 'lead')
+    
+    // Извлекаем лиды (универсальный поиск)
+    const leads = insight.actions?.find(a => a.action_type === 'lead')?.value || 
+                  insight.actions?.find(a => a.action_type === 'onsite_conversion.messaging_first_reply')?.value || 0
+    
     const spend = parseFloat(insight.spend || 0)
-    const cpl = leads > 0 ? (spend / leads) : 0
+    const cpa = leads > 0 ? (spend / leads).toFixed(2) : '0.00'
 
     const metrics = {
       spend: `$${spend.toFixed(2)}`,
       leads: parseInt(leads),
-      cpl: `$${cpl.toFixed(2)}`,
-      impressions: formatNumber(insight.impressions),
-      clicks: formatNumber(insight.clicks),
-      ctr: insight.ctr ? `${parseFloat(insight.ctr).toFixed(2)}%` : '0%'
+      cpa: `$${cpa}`,
+      impressions: parseInt(insight.impressions || 0).toLocaleString('ru-RU'),
+      reach: parseInt(insight.reach || 0).toLocaleString('ru-RU'),
+      clicks: parseInt(insight.inline_link_clicks || 0).toLocaleString('ru-RU'),
+      ctr: insight.ctr ? (parseFloat(insight.ctr) * 100).toFixed(2) + '%' : '0%',
+      cpc: insight.cpc ? `$${parseFloat(insight.cpc).toFixed(2)}` : '$0.00'
     }
 
-    const adsetUrl = `https://graph.facebook.com/v21.0/${campaignId}/adsets?` + new URLSearchParams({
-      fields: 'id,name,daily_budget,targeting',
-      limit: 1,
-      access_token: token
-    })
+    const adsetUrl = `https://graph.facebook.com/v18.0/${campaignId}/adsets?fields=id,name,daily_budget,targeting&limit=1&access_token=${token}`
     const adsetRes = await fetch(adsetUrl)
     const adsetData = await adsetRes.json()
     const adset = adsetData.data?.[0]
 
-    const insightsUrl = `https://graph.facebook.com/v21.0/${campaignId}/insights?` + new URLSearchParams({
-      fields: 'date_start,spend,actions,impressions,clicks',
-      time_increment: 1,
-      date_preset: 'last_30d',
-      access_token: token
-    })
+    const insightsUrl = `https://graph.facebook.com/v18.0/${campaignId}/insights?fields=date_start,spend,actions,impressions,inline_link_clicks&time_increment=1&date_preset=last_30d&access_token=${token}`
     const insightsRes = await fetch(insightsUrl)
     const insightsData = await insightsRes.json()
+    
     const timeline = (insightsData.data || []).map((row) => {
-      const dayLeads = getActionValue(row.actions, 'lead')
+      const dayLeads = row.actions?.find(a => a.action_type === 'lead')?.value || 
+                       row.actions?.find(a => a.action_type === 'onsite_conversion.messaging_first_reply')?.value || 0
       const daySpend = parseFloat(row.spend || 0)
-      const dayCpl = dayLeads > 0 ? (daySpend / dayLeads) : 0
       return {
         date: row.date_start,
         spend: `$${daySpend.toFixed(2)}`,
         leads: parseInt(dayLeads),
-        cpl: `$${dayCpl.toFixed(2)}`
+        cpl: dayLeads > 0 ? `$${(daySpend / dayLeads).toFixed(2)}` : '—'
       }
     })
 
@@ -104,17 +100,6 @@ export default async function handler(req, res) {
     console.error(e)
     res.status(500).json({ error: 'Server error' })
   }
-}
-
-function getActionValue(actions, type) {
-  if (!Array.isArray(actions)) return 0
-  return actions.find(a => a.action_type === type)?.value || 0
-}
-
-function formatNumber(value) {
-  if (!value) return '0'
-  const number = parseInt(value)
-  return Number.isNaN(number) ? String(value) : number.toLocaleString('en-US')
 }
 
 function formatDate(dateString) {

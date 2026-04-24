@@ -1,4 +1,3 @@
-// api/stats.js
 import { createClient } from '@supabase/supabase-js'
 import { getTgUserId, requireSubscription } from './_subscription.js'
 
@@ -21,41 +20,47 @@ export default async function handler(req, res) {
       .single()
 
     if (!requireSubscription(user, res)) return
-    
     if (!user?.fb_access_token) return res.status(401).json({ error: 'No Facebook token' })
-    if (!user?.fb_ad_account_id) return res.status(400).json({ error: 'No ad account selected' })
 
-    const days = parseInt(req.query.days || '7')
-    const since = getDateBefore(days)
-    const until = getDateBefore(0)
+    const days = parseInt(req.query.days || '30')
+    
+    // Метрики согласно ТЗ: Reach, Impressions, CTR, CPC, CPA, Leads, Spend
+    const fields = [
+      'spend',
+      'impressions',
+      'reach',
+      'inline_link_clicks',
+      'ctr',
+      'cpc',
+      'cpm',
+      'cpp',
+      'actions',
+      'cost_per_action_type',
+      'account_currency'
+    ].join(',')
 
-    const params = {
-      time_range: JSON.stringify({ since, until }),
+    const url = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      fields: fields,
+      date_preset: `last_${days}d`,
       access_token: user.fb_access_token
-    }
-
-    // ── Fetch 1: Total summary stats ──
-    const summaryUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
-      ...params,
-      fields: 'spend,impressions,reach,clicks,actions'
     })
 
-    // ── Fetch 2: Daily breakdown for chart ──
-    const dailyUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
-      ...params,
-      fields: 'spend,impressions,reach,clicks',
-      time_increment: '1'
+    const dailyUrl = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
+      fields: 'spend,impressions,reach,inline_link_clicks',
+      date_preset: `last_${days}d`,
+      time_increment: '1',
+      access_token: user.fb_access_token
     })
 
-    // ── Fetch 3: Platform breakdown ──
-    const platformUrl = `https://graph.facebook.com/v21.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
-      ...params,
+    const platformUrl = `https://graph.facebook.com/v18.0/${user.fb_ad_account_id}/insights?` + new URLSearchParams({
       fields: 'impressions,reach,spend',
-      breakdowns: 'publisher_platform'
+      date_preset: `last_${days}d`,
+      breakdowns: 'publisher_platform',
+      access_token: user.fb_access_token
     })
 
     const [summaryRes, dailyRes, platformRes] = await Promise.all([
-      fetch(summaryUrl),
+      fetch(url),
       fetch(dailyUrl),
       fetch(platformUrl)
     ])
@@ -66,66 +71,54 @@ export default async function handler(req, res) {
       platformRes.json()
     ])
 
-    // Если Meta вернула ошибку токена (код 190), сообщаем об этом
-    if (summaryData.error?.code === 190) {
-      return res.status(401).json({ error: 'Token expired', message: 'Пожалуйста, переподключите Facebook в профиле' })
-    }
+    if (summaryData.error) throw new Error(summaryData.error.message)
 
-    // ── Process summary ──
     const insight = summaryData.data?.[0] || {}
-    const leads = insight.actions?.find(a => a.action_type === 'lead')?.value || 0
-    const spend = parseFloat(insight.spend || 0).toFixed(2)
-    const impressions = parseInt(insight.impressions || 0)
-    const reach = parseInt(insight.reach || 0)
-    const clicks = parseInt(insight.clicks || 0)
-    const cpl = leads > 0 ? (parseFloat(spend) / leads).toFixed(2) : '0.00'
+    
+    // Универсальный поиск лидов/конверсий
+    const actions = insight.actions || []
+    const leads = actions.find(a => a.action_type === 'lead')?.value || 
+                  actions.find(a => a.action_type === 'onsite_conversion.messaging_first_reply')?.value || 0
 
-    // ── Process daily chart data ──
+    const spend = parseFloat(insight.spend || 0)
+    const currency = insight.account_currency === 'KZT' ? '₸' : '$'
+    const cpa = leads > 0 ? (spend / leads).toFixed(2) : '0.00'
+
     const daily = (dailyData.data || []).map(d => ({
       date: d.date_start,
       impressions: parseInt(d.impressions || 0),
       reach: parseInt(d.reach || 0),
-      clicks: parseInt(d.clicks || 0),
+      clicks: parseInt(d.inline_link_clicks || 0),
       spend: parseFloat(d.spend || 0)
     }))
 
-    // ── Process platform breakdown ──
     const platforms = (platformData.data || []).map(d => ({
-      platform: formatPlatform(d.publisher_platform),
+      platform: d.publisher_platform === 'facebook' ? 'Facebook' : 
+                d.publisher_platform === 'instagram' ? 'Instagram' : 
+                d.publisher_platform === 'messenger' ? 'Messenger' : d.publisher_platform,
       impressions: parseInt(d.impressions || 0),
       reach: parseInt(d.reach || 0),
       spend: parseFloat(d.spend || 0).toFixed(2)
     }))
 
     res.json({
-      spend,
+      spend: spend.toFixed(2),
       leads: parseInt(leads),
-      cpl,
-      impressions: impressions.toLocaleString('ru-RU'),
-      reach: reach.toLocaleString('ru-RU'),
-      clicks: clicks.toLocaleString('ru-RU'),
-      currency: '$',
+      cpa: cpa, 
+      cpl: cpa, 
+      impressions: parseInt(insight.impressions || 0).toLocaleString('ru-RU'),
+      reach: parseInt(insight.reach || 0).toLocaleString('ru-RU'),
+      clicks: parseInt(insight.inline_link_clicks || 0).toLocaleString('ru-RU'),
+      ctr: insight.ctr ? (parseFloat(insight.ctr) * 100).toFixed(2) + '%' : '0%',
+      cpc: insight.cpc ? parseFloat(insight.cpc).toFixed(2) : '0.00',
+      cpm: insight.cpm ? parseFloat(insight.cpm).toFixed(2) : '0.00',
+      currency: currency,
       daily,
       platforms
     })
+
   } catch (e) {
     console.error('Stats error:', e)
-    res.status(500).json({ error: 'Server error' })
+    res.status(500).json({ error: 'Server error: ' + e.message })
   }
-}
-
-function formatPlatform(key) {
-  const map = {
-    facebook: 'Facebook',
-    instagram: 'Instagram',
-    audience_network: 'Audience Network',
-    messenger: 'Messenger'
-  }
-  return map[key] || key || 'Unknown'
-}
-
-function getDateBefore(daysAgo) {
-  const d = new Date()
-  d.setDate(d.getDate() - daysAgo)
-  return d.toISOString().split('T')[0]
 }
